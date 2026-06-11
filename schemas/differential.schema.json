@@ -1,0 +1,117 @@
+{
+  "$defs": {
+    "DifferentialItem": {
+      "properties": {
+        "condition": {
+          "title": "Condition",
+          "type": "string"
+        },
+        "discriminators_pending": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Discriminators Pending",
+          "type": "array"
+        },
+        "evidence_against": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "title": "Evidence Against",
+          "type": "array"
+        },
+        "evidence_for": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "title": "Evidence For",
+          "type": "array"
+        },
+        "guideline_refs": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Guideline Refs",
+          "type": "array"
+        },
+        "probability": {
+          "default": 0.0,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Probability",
+          "type": "number"
+        },
+        "status": {
+          "default": "not_excluded",
+          "pattern": "^(not_excluded|excluded|confirmed_pending)$",
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "condition"
+      ],
+      "title": "DifferentialItem",
+      "type": "object"
+    },
+    "SourceRef": {
+      "description": "硬规则5: 任何临床字段必须可溯源。",
+      "properties": {
+        "asr_confidence": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Asr Confidence"
+        },
+        "kind": {
+          "pattern": "^(utterance|ehr|doctor_input|tool)$",
+          "title": "Kind",
+          "type": "string"
+        },
+        "ref_id": {
+          "minLength": 1,
+          "title": "Ref Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "ref_id"
+      ],
+      "title": "SourceRef",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "most_likely": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/DifferentialItem"
+      },
+      "title": "Most Likely",
+      "type": "array"
+    },
+    "must_not_miss": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/DifferentialItem"
+      },
+      "title": "Must Not Miss",
+      "type": "array"
+    }
+  },
+  "title": "Differential",
+  "type": "object"
+}

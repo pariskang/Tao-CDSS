@@ -1,0 +1,46 @@
+# OLDCARTS 实例化 + 脊髓压迫判别槽位
+# PENDING_PHYSICIAN_REVIEW
+must_not_miss:
+  - condition: spinal_cord_compression
+    probability: 0.06
+    discriminators:
+      - saddle_anesthesia
+      - bowel_bladder_dysfunction
+      - progressive_leg_weakness
+slots:
+  - name: saddle_anesthesia
+    question: 会阴部或者骑跨部位有没有麻木的感觉?
+    priority: 1
+    red_flag: true
+  - name: bowel_bladder_dysfunction
+    question: 最近大小便控制得怎么样,有没有失禁或者排不出来的情况?
+    priority: 2
+    red_flag: true
+  - name: progressive_leg_weakness
+    question: 双腿的力气最近有没有越来越差?
+    priority: 3
+    red_flag: true
+  - name: pain_location
+    question: 疼痛主要在什么部位?
+    priority: 10
+    required: true
+    keywords: [腰, 背, 骨头, 腿, 髋]
+  - name: onset
+    question: 这次疼痛是什么时候开始或者加重的?
+    priority: 11
+    required: true
+  - name: night_pain
+    question: 晚上痛得会不会更厉害,会不会痛醒?
+    priority: 12
+  - name: nrs_score
+    question: 疼痛0到10分,您打几分?
+    priority: 13
+    required: true
+  - name: medication
+    question: 目前在用什么止痛药或者抗肿瘤治疗?
+    priority: 20
+  - name: psych_distress
+    question: 这段时间心情和睡眠怎么样?
+    priority: 30
+    sensitive: true
+    reason: 为了更全面地帮助您,我想了解一下,

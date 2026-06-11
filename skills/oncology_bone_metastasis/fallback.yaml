@@ -1,0 +1,6 @@
+degradation:
+  L1: 模板问句逐项过三联征判别槽位
+  L2: 纯规则问卷;三联征红旗与 E1 升级不受影响
+human_handoff:
+  - 触发 E0/E1
+  - 三联征任一回答无法判定(unknown/probably_denied)且患者要求人工

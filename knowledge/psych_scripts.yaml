@@ -1,0 +1,16 @@
+# 心理危机固定话术(硬规则6: 禁止 LLM 自由生成,禁止提供方法学信息)
+# PENDING_PHYSICIAN_REVIEW: 以下文案为工程占位,须经精神科执业医师审定后方可进入验证
+PENDING_PHYSICIAN_REVIEW: true
+self_harm:
+  script_id: psych_self_harm_v1
+  text: >-
+    听到您这样说,我非常关心您现在的安全。您不是一个人,我已经通知工作人员,
+    很快会有专业人员来与您直接沟通。请您先留在安全的地方,陪在身边的人也请不要离开。
+    如果情况紧急,请立即拨打当地心理援助热线或120。
+  notify_human: true
+harm_others:
+  script_id: psych_harm_others_v1
+  text: >-
+    我注意到您刚才提到的内容,这很重要。我已经通知工作人员,马上会有专业人员
+    与您直接沟通,请您稍候,保持在线。
+  notify_human: true

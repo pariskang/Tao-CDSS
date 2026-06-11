@@ -1,0 +1,42 @@
+{
+  "properties": {
+    "asr_confidence": {
+      "default": 1.0,
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Asr Confidence",
+      "type": "number"
+    },
+    "dialect_region": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Dialect Region"
+    },
+    "speaker": {
+      "default": "patient",
+      "title": "Speaker",
+      "type": "string"
+    },
+    "text": {
+      "title": "Text",
+      "type": "string"
+    },
+    "utterance_id": {
+      "title": "Utterance Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "utterance_id",
+    "text"
+  ],
+  "title": "UtteranceEvent",
+  "type": "object"
+}

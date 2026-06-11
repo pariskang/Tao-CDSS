@@ -1,0 +1,16 @@
+{
+  "_comment": "重命名为 settings.json 以启用编辑后自动安全门(策略5)。",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/safety-gate.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

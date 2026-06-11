@@ -1,0 +1,22 @@
+# 急症升级固定话术(协议 L8.2: E0/E1 触发后不可被对话降级,只有人工可降级)
+# PENDING_PHYSICIAN_REVIEW: 文案为工程占位,须经急诊科执业医师审定
+PENDING_PHYSICIAN_REVIEW: true
+E0:
+  script_id: call_120_v1
+  text: >-
+    现在的情况需要立刻拨打120急救电话。请立即拨打120,告诉接线员所在位置和刚才描述的情况。
+    在救护车到达前请不要让患者独处。
+E1:
+  script_id: er_now_v3
+  text: >-
+    根据您刚才描述的情况,建议立即前往最近医院的急诊科就诊,不要等待门诊预约。
+    我已通知分诊台。如果途中症状加重,请直接拨打120。
+E2:
+  script_id: same_day_v1
+  text: 建议您今天之内到医院就诊,我会把已收集的信息整理给接诊医生。
+E3:
+  script_id: within_48h_v1
+  text: 建议您在48小时内安排就诊。
+E4:
+  script_id: routine_v1
+  text: 建议您按常规门诊安排就诊。

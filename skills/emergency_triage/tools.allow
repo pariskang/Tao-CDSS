@@ -1,0 +1,4 @@
+# emergency_triage 工具白名单(HermesBroker 强制执行)
+triage.red_flag_check
+terminology.normalize_symptom
+calculator.nrs_pain
