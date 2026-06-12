@@ -22,16 +22,29 @@
 | MCP servers | `mcp_servers/` | ✅ calculator/terminology/triage/drug_safety |
 | Skills(L4) | `skills/` | ✅ emergency_triage + oncology_bone_metastasis 七件套 |
 | 评测(L9) | `evals/` | ✅ SP 回放 + 红队回归 |
+| LLM 后端 | `packages/llm-backend` | ✅ litellm 多模型 + LLMGateway 治理(剂量出站/审计/成本/重试修复) |
+| HermesAgents(L6) | `services/hermes-agents` | ✅ Manager + bounded specialists + 复杂度路由 + 多评审共识;LLM 失败确定性兜底 |
+| Shanghan-Hermes | `packages/shanghan` | ✅ 条文分支解析 → branch 级证据 → 对抗审核 → ReleaseGate 硬拒绝 → 方证/六经/鉴别归纳 → SkillRAG 全 handler → 患者递归脱敏 |
+| 编码智能体接入 | `.mcp.json` / `AGENTS.md` / `integrations/` | ✅ Claude Code / Codex / OpenClaw(MCP stdio server + CLI) |
 
 ## 快速开始
 
 ```bash
 uv venv .venv && uv pip install --python .venv/bin/python \
-  pydantic pyyaml pytest pytest-asyncio pytest-cov
+  pydantic pyyaml litellm pytest pytest-asyncio pytest-cov
 .venv/bin/python -m pytest -q          # 全量测试
 just test-safety                        # 安全三模块,100% 覆盖强制
 just replay oncology_bone_metastasis    # SP 回放
 just redteam                            # 红队回归
+just shanghan-stats                     # 伤寒规则挖掘管线
+just shanghan-ask "桂枝汤和麻黄汤怎么鉴别"
+```
+
+LLM 后端(可选,缺省走确定性 fallback):
+
+```bash
+export HERMES_LLM_MODEL="anthropic/claude-sonnet-4-6"   # 任意 litellm 模型
+export HERMES_LLM_API_BASE="http://院内私有化端点/v1"     # 可选
 ```
 
 ## 安全红线(详见 CLAUDE.md 硬规则 1-6)

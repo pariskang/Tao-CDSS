@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "shanghan-hermes": {
+      "command": "bash",
+      "args": ["scripts/run_shanghan_mcp.sh"]
+    }
+  }
+}

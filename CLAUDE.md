@@ -18,6 +18,10 @@
    ehr_ref),contracts 包的 validator 会拒绝无源写入,禁止放宽。
 6. 心理危机分支(psych_risk)的话术来自 knowledge/psych_scripts.yaml
    固定文案,禁止改为 LLM 生成。
+7. 所有 LLM 调用必须经 packages/llm-backend 的 LLMGateway(内置剂量
+   出站扫描与审计),禁止直接调用 litellm/SDK;Shanghan ReleaseGate
+   (packages/shanghan/src/shanghan/review.py)的硬拒绝条件
+   (semantic fail / 无方剂方证规则 / 空规则)禁止放宽。
 
 ## 技术栈与约定
 - Python 3.11+;Pydantic v2;PyYAML;sqlite(开发)/PostgreSQL(生产)
