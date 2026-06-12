@@ -69,7 +69,17 @@ class EvidenceVerifier:
         if strength and strength not in rule.conclusion_span:
             problems.append(f"强度标记不在 conclusion_span 内: {strength}")
         forbidden = rule.then_conclusions.get("forbidden_formula")
-        if forbidden and forbidden not in rule.conclusion_span:
-            problems.append(f"禁忌方剂不在 conclusion_span 内: {forbidden}")
+        if forbidden:
+            if rule.then_conclusions.get("referential"):
+                # 指代禁忌: 方剂须在条文全文中存在,且结论区间携带否定标记
+                if forbidden not in clause.text:
+                    problems.append(f"指代禁忌方剂不在条文中: {forbidden}")
+                if "不可" not in rule.conclusion_span:
+                    problems.append("指代禁忌结论区间缺少否定标记")
+            elif forbidden not in rule.conclusion_span:
+                problems.append(f"禁忌方剂不在 conclusion_span 内: {forbidden}")
+        therapy = rule.then_conclusions.get("forbidden_therapy")
+        if therapy and f"不可{therapy}" not in rule.conclusion_span:
+            problems.append(f"治法禁忌不在 conclusion_span 内: 不可{therapy}")
 
         return EvidenceReport(ok=not problems, problems=problems)

@@ -62,10 +62,11 @@ class SemanticReviewer:
         problems: list[str] = []
         if rule.rule_type == "formula_pattern_rule" and not rule.then_conclusions.get("formula"):
             problems.append("formula_rule_without_formula")
-        if rule.rule_type == "contraindication_rule" and not rule.then_conclusions.get(
-            "forbidden_formula"
+        if rule.rule_type == "contraindication_rule" and not (
+            rule.then_conclusions.get("forbidden_formula")
+            or rule.then_conclusions.get("forbidden_therapy")
         ):
-            problems.append("contraindication_without_formula")
+            problems.append("contraindication_without_target")
         if rule.rule_type == "channel_outline_rule" and not rule.then_conclusions.get("channel"):
             problems.append("outline_without_channel")
         for term in rule.condition_terms():

@@ -126,6 +126,42 @@ class TestEvidenceVerifier:
         assert not report.ok
         assert any("conclusion_offsets" in p for p in report.problems)
 
+    def test_referential_contraindication_verifies(self, rules, verifier):
+        rule = next(
+            r for r in rules
+            if r.then_conclusions.get("referential")
+        )
+        assert rule.then_conclusions["forbidden_formula"] == "大青龙汤"
+        assert verifier.verify(rule).ok
+
+    def test_referential_formula_not_in_clause_fails(self, rules, verifier):
+        rule = next(r for r in rules if r.then_conclusions.get("referential"))
+        fake = rule.model_copy(
+            update={"then_conclusions": {"forbidden_formula": "麻黄汤",
+                                          "referential": True}}
+        )
+        report = verifier.verify(fake)
+        assert not report.ok
+        assert any("指代禁忌方剂不在条文中" in p for p in report.problems)
+
+    def test_therapy_contraindication_verifies(self, rules, verifier):
+        rule = next(
+            r for r in rules
+            if r.then_conclusions.get("forbidden_therapy") == "发汗"
+        )
+        assert verifier.verify(rule).ok
+
+    def test_fabricated_therapy_target_fails(self, rules, verifier):
+        rule = next(
+            r for r in rules
+            if r.then_conclusions.get("forbidden_therapy") == "发汗"
+        )
+        fake = rule.model_copy(
+            update={"then_conclusions": {"forbidden_therapy": "下"}}
+        )
+        report = verifier.verify(fake)
+        assert not report.ok
+
     def test_cross_branch_condition_fails(self, rules, verifier):
         """同条文跨分支污染: 烦躁不得眠(B1)绑到五苓散(B2)必须失败。"""
         wuling = rule_for_formula(rules, "五苓散")

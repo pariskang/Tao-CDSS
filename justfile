@@ -29,6 +29,10 @@ shanghan-ask question:
     PYTHONPATH=".:packages/contracts/src:packages/redflag-engine/src:packages/audit-chain/src:packages/eventstore/src:packages/shanghan/src:packages/llm-backend/src:services/hermes-guard/src:services/hermes-loop/src:services/hermes-broker/src:services/hermes-compose/src:services/hermes-voice/src:services/hermes-agents/src" \
     .venv/bin/python -m shanghan.cli ask "{{question}}"
 
+shanghan-calibration:
+    PYTHONPATH=".:packages/contracts/src:packages/redflag-engine/src:packages/audit-chain/src:packages/eventstore/src:packages/shanghan/src:packages/llm-backend/src:services/hermes-guard/src:services/hermes-loop/src:services/hermes-broker/src:services/hermes-compose/src:services/hermes-voice/src:services/hermes-agents/src" \
+    .venv/bin/python -m evals.calibration.shanghan_gold
+
 mcp-server:
     bash scripts/run_shanghan_mcp.sh
 

@@ -72,6 +72,50 @@ class TestPolarityAndStrength:
         assert b.strength == "主之"
 
 
+class TestNewGrammarForms:
+    def test_before_marker_yi(self):
+        """42条: "宜桂枝汤" 前置强度标记,结论区间含标记。"""
+        b = next(x for x in branches_of("SHL_042") if x.formula == "桂枝汤")
+        assert b.polarity == "indicated"
+        assert b.strength == "宜"
+        assert b.action_span.startswith("宜桂枝汤")
+        assert "宜" not in b.condition_span[-1:]
+
+    def test_before_marker_yu(self):
+        """103条: "先与小柴胡汤"/"与大柴胡汤" 前置 与。"""
+        branches = branches_of("SHL_103")
+        xiao = next(x for x in branches if x.formula == "小柴胡汤")
+        da = next(x for x in branches if x.formula == "大柴胡汤")
+        assert xiao.strength == "与"
+        assert da.strength == "与"
+        assert da.condition_span == "呕不止,心下急,郁郁微烦者"
+        # 跨分支隔离: 第一分支条件不污染第二分支
+        assert "柴胡证仍在" not in da.condition_span
+
+    def test_referential_contraindication(self):
+        """38条: "不可服之" 回指大青龙汤。"""
+        branches = branches_of("SHL_038")
+        contra = next(x for x in branches if x.polarity == "contraindicated")
+        assert contra.formula == "大青龙汤"
+        assert contra.referential
+        assert contra.condition_span == "若脉微弱,汗出恶风者"
+        assert contra.action_span.startswith("不可服")
+
+    def test_therapy_contraindication(self):
+        """83条: "不可发汗" 治法禁忌(无方剂宾语)。"""
+        b = branches_of("SHL_083")[0]
+        assert b.polarity == "contraindicated"
+        assert b.therapy == "发汗"
+        assert b.formula is None
+        assert b.condition_span == "咽喉干燥者"
+
+    def test_therapy_contraindication_with_consequence(self):
+        b = branches_of("SHL_084")[0]
+        assert b.therapy == "发汗"
+        assert b.condition_span == "淋家"
+        assert "便血" in b.action_span  # 后果保留在结论区间
+
+
 class TestOptionalAndOffsets:
     def test_optional_symptoms_clause_40(self):
         b = next(x for x in branches_of("SHL_040") if x.formula == "小青龙汤")

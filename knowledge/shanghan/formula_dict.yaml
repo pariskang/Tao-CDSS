@@ -6,29 +6,49 @@ formulas:
   桂枝汤: {channel_anchor: taiyang}
   桂枝加葛根汤: {channel_anchor: taiyang}
   桂枝加附子汤: {channel_anchor: taiyang}
+  桂枝甘草汤: {channel_anchor: taiyang}
   葛根汤: {channel_anchor: taiyang}
   葛根黄芩黄连汤: {channel_anchor: taiyang}
   麻黄汤: {channel_anchor: taiyang}
+  大青龙汤: {channel_anchor: taiyang}
   小青龙汤: {channel_anchor: taiyang}
   五苓散: {channel_anchor: taiyang}
   大黄黄连泻心汤: {channel_anchor: taiyang}
   炙甘草汤: {channel_anchor: taiyang}
+  小建中汤: {channel_anchor: taiyang}
   白虎加人参汤: {channel_anchor: yangming}
+  白虎汤: {channel_anchor: yangming}
   大承气汤: {channel_anchor: yangming}
   小柴胡汤: {channel_anchor: shaoyang}
+  大柴胡汤: {channel_anchor: shaoyang}
   麻黄细辛附子汤: {channel_anchor: shaoyin}
+  干姜附子汤: {channel_anchor: shaoyin}
+  真武汤: {channel_anchor: shaoyin}
+  四逆汤: {channel_anchor: shaoyin}
+  吴茱萸汤: {channel_anchor: jueyin}
 
-# 处置强度标记(语法识别: 主之 > 宜 > 可与 > 与/属;否定: 不可与/不可发汗/不可下)
+# 处置强度标记的语法位置(评审 P1-4: 对主之/宜/可与/与/属建立更严格的语法识别)
+# 后置: "X主之";前置: "宜X/可与X/与X/属X";否定前置: "不可与X"
 strength_markers:
-  positive: [主之, 宜, 可与, 与, 属]
-  negative: [不可与, 不可发汗, 不可下, 禁]
+  positive_after: [主之]
+  positive_before: [可与, 宜, 与, 属]
+  negative: [不可与, 不可服, 不可发汗, 不可下, 不可吐, 禁]
+
+# 治法禁忌(无方剂宾语): "不可发汗/不可下/不可吐"
+therapy_contraindications: [不可发汗, 不可下, 不可吐]
+
+# 指代禁忌(回指前一分支主方): "不可服之/不可与之/不可更服"
+referential_contraindications: [不可服, 不可与之, 不可更服]
 
 # 误治/先行处置标志(mistreatment 前置条件)
 prior_treatment_markers:
   - 医反下之
+  - 反二三下之
   - 反下之
   - 下之后
   - 发汗后
+  - 病发汗
+  - 发汗过多
   - 服桂枝汤
   - 大汗出后
   - 发汗,遂

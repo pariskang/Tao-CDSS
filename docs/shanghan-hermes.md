@@ -66,9 +66,27 @@ export HERMES_LLM_API_BASE="..."                        # 可选,院内私有化
 - **OpenClaw**: `integrations/openclaw/`(MCP 或 CLI 工具注册)。
 - 通用 CLI: `python -m shanghan.cli ask|stats|paper`。
 
-## 后续升级路径(评审 P1/P2 残余项)
+## 已落地的扩展(原 P1/P2 残余项)
 
-- 版本异文/注释对齐(条文号/方名锚点 + 一对一最大匹配 + 人工校勘清单);
+- **语法位置识别**(P1-4): 后置"X主之" / 前置"宜X/与X/可与X/属X" /
+  否定前置"不可与X" / 治法禁忌"不可发汗" / 指代禁忌"不可服之"
+  (回指消解,证据回源走指代路径并显式标注 `referential: true`);
+- **版本异文/注释对齐**(`shanghan/variants.py`): 条文号/共享方名/首尾短语
+  锚点加权 + 一对一贪心最大匹配 + whitelist/blacklist 人工校勘 +
+  difflib 有序差异(保留顺序与上下文);
+- **金标准校准工具链**(`evals/calibration/shanghan_gold.py` +
+  `knowledge/shanghan/gold_standard.jsonl`): 按 correct/partial/incorrect
+  三级标注计算各 release 等级 precision(strict/lenient)/recall/F1 与
+  分数分布;当前为 engineer_seed 种子标注,医师重标后用于阈值校准;
+- **专科注册表路由**(`hermes_agents/manager.py` SPECIALTY_MAP):
+  moderate/complex 按 specialty + tcm_requested + medications 信号选派,
+  受限会诊上限不变;
+- **matcher 归一化**: 缺失核心惩罚按核心证候数归一,
+  避免核心丰富方剂被过度压制。
+
+## 后续升级路径
+
+- 语料从 39 条扩至全本 398 条(方后注/加减法等新形态增量迭代);
 - PaperWriter → 文献检索/引文校验/审稿人质疑多 Agent;
 - 真实多模型评审(不同基座交叉评审)与专家金标准校准实验。
 

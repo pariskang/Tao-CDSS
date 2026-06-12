@@ -105,6 +105,34 @@ class TestManagerConsult:
         assert len(consulted) <= 2 + MAX_CONSULT_SPECIALISTS
         assert "tcm_reasoning" in consulted
 
+    def test_moderate_specialty_registry_routing(self, manager):
+        """专科注册表: respiratory → medication_safety,不再固定取第一个。"""
+        result = manager.consult(
+            {"texts": ["咳嗽两天"], "chief_complaints": ["咳嗽"],
+             "specialty": "respiratory"}
+        )
+        assert result.complexity == "moderate"
+        consulted = result.merged["specialists_consulted"]
+        assert "medication_safety" in consulted
+        assert "tcm_reasoning" not in consulted
+
+    def test_moderate_tcm_specialty(self, manager):
+        result = manager.consult(
+            {"texts": ["腰痛"], "chief_complaints": ["腰痛"], "specialty": "tcm"}
+        )
+        assert result.merged["specialists_consulted"][-1] == "tcm_reasoning"
+
+    def test_medications_signal_adds_med_safety(self, manager):
+        result = manager.consult(
+            {"texts": ["腰痛", "怕冷"], "chief_complaints": ["腰痛", "怕冷"],
+             "medications": ["warfarin", "aspirin"]}
+        )
+        assert result.complexity == "complex"
+        consulted = result.merged["specialists_consulted"]
+        assert "medication_safety" in consulted
+        med = result.merged["sections"]["medication_safety"]
+        assert med["interactions"]
+
     def test_merged_output_is_doctor_channel(self, manager):
         result = manager.consult(
             {"texts": ["咳嗽"], "chief_complaints": ["咳嗽"]}
