@@ -100,11 +100,24 @@ class InitialRuleExtractor:
                 **base,
             )
         if branch.polarity == "contraindicated" and branch.formula:
+            conclusions: dict = {"forbidden_formula": branch.formula}
+            if branch.referential:
+                # 方剂名由指代消解得出("不可服之"回指前一分支主方),
+                # 证据回源走指代路径而非 conclusion_span 字面绑定
+                conclusions["referential"] = True
             return InitialRule(
                 rule_id=f"{branch.branch_id}_R",
                 rule_type="contraindication_rule",
                 if_conditions=conditions,
-                then_conclusions={"forbidden_formula": branch.formula},
+                then_conclusions=conclusions,
+                **base,
+            )
+        if branch.polarity == "contraindicated" and branch.therapy:
+            return InitialRule(
+                rule_id=f"{branch.branch_id}_R",
+                rule_type="contraindication_rule",
+                if_conditions=conditions,
+                then_conclusions={"forbidden_therapy": branch.therapy},
                 **base,
             )
         m = _OUTLINE_RE.search(branch.text)

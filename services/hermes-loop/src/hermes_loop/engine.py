@@ -280,6 +280,8 @@ class LoopEngine:
 
     # ------------------------------------------------------------------ helpers
     def _try_llm(self, text: str) -> None:
+        # 硬规则7: 传入的 llm 可调用对象必须由 hermes_llm.LLMGateway 封装
+        # (网关内置剂量出站扫描与审计),禁止直接传裸 SDK/litellm 调用。
         if self._llm is None or self.degradation.level != "L0":
             return
         before = self.degradation.level

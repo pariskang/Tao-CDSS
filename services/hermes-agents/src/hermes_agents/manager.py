@@ -19,6 +19,15 @@ from hermes_agents.specialists import (
 
 MAX_CONSULT_SPECIALISTS = 3
 
+#: 专科 → specialist 名称(协议 L3.3;PENDING: 按院内科室表扩充)
+SPECIALTY_MAP: dict[str, tuple[str, ...]] = {
+    "tcm": ("tcm_reasoning",),
+    "oncology": ("medication_safety", "tcm_reasoning"),
+    "respiratory": ("medication_safety",),
+    "geriatrics": ("medication_safety",),
+}
+DEFAULT_SPECIALISTS: tuple[str, ...] = ("tcm_reasoning", "medication_safety")
+
 
 def classify_complexity(task: dict) -> str:
     complaints = task.get("chief_complaints", [])
@@ -43,14 +52,34 @@ class ManagerAgent(BaseAgent):
     name = "manager"
     role = ""
 
-    def __init__(self, gateway=None, specialists: list[BaseAgent] | None = None):
+    def __init__(self, gateway=None, specialists: dict[str, BaseAgent] | None = None):
         super().__init__(gateway)
         self._intake = IntakeAgent(gateway)
         self._safety = SafetyTriageAgent()
-        self._specialists = specialists if specialists is not None else [
-            TCMReasoningAgent(gateway),
-            MedicationSafetyAgent(),
-        ]
+        self._registry: dict[str, BaseAgent] = specialists or {
+            "tcm_reasoning": TCMReasoningAgent(gateway),
+            "medication_safety": MedicationSafetyAgent(),
+        }
+
+    def _select_specialists(self, task: dict, complexity: str) -> list[BaseAgent]:
+        """专科注册表路由: specialty → SPECIALTY_MAP;tcm_requested/用药信息
+        作为补充信号;受限会诊上限 MAX_CONSULT_SPECIALISTS。"""
+        names: list[str] = []
+        specialty = task.get("specialty")
+        if specialty:
+            names.extend(SPECIALTY_MAP.get(specialty, DEFAULT_SPECIALISTS[:1]))
+        if task.get("tcm_requested"):
+            names.append("tcm_reasoning")
+        if task.get("medications"):
+            names.append("medication_safety")
+        if not names:
+            names.extend(DEFAULT_SPECIALISTS)
+        seen: list[str] = []
+        for n in names:
+            if n not in seen and n in self._registry:
+                seen.append(n)
+        limit = 1 if complexity == "moderate" else MAX_CONSULT_SPECIALISTS
+        return [self._registry[n] for n in seen[:limit]]
 
     def consult(self, task: dict) -> ConsultResult:
         # 红旗扫描永远先行,任何复杂度都执行
@@ -60,11 +89,9 @@ class ManagerAgent(BaseAgent):
         complexity = classify_complexity(task)
 
         outputs: list[AgentResult] = [safety, self._intake.run(task)]
-        if complexity == "moderate":
-            outputs.append(self._specialists[0].run(task))
-        elif complexity == "complex":
+        if complexity in ("moderate", "complex"):
             # 受限会诊: 各 specialist 独立运行(无相互上下文),Manager 合成
-            for sp in self._specialists[:MAX_CONSULT_SPECIALISTS]:
+            for sp in self._select_specialists(task, complexity):
                 outputs.append(sp.run(task))
 
         merged = self._merge(outputs, task)

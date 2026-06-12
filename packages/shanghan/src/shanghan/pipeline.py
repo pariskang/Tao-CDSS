@@ -71,7 +71,7 @@ class ShanghanPipeline:
                 },
             )
         patterns = FormulaPatternInducer().induce(approved)
-        channels = SixChannelInducer().induce(approved)
+        channels = SixChannelInducer(self._index).induce(approved)
         differentials = DifferentialInducer().induce(patterns)
         released = [a for a in approved if a.release_level != "rejected"]
         stats = {

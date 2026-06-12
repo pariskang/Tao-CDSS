@@ -62,10 +62,9 @@ class TCMReasoningAgent(BaseAgent):
 
     def _rag_match(self, task: dict) -> dict:
         if self._rag is None:
-            from shanghan.pipeline import ShanghanPipeline
-            from shanghan.skill_rag import SkillRAG
+            from shanghan.runtime import default_rag
 
-            self._rag = SkillRAG(ShanghanPipeline().run())
+            self._rag = default_rag()  # 共享缓存,避免每实例重跑管线
         question = "匹配什么方证? " + " ".join(task.get("texts", []))
         return self._rag.ask(question, role="doctor")
 

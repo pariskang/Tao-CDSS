@@ -15,16 +15,16 @@ def result(pipeline):
 
 
 def test_regression_counts(result):
-    assert result.stats["clauses"] == 26
-    assert result.stats["initial_rules"] == 24
+    assert result.stats["clauses"] == 39
+    assert result.stats["initial_rules"] == 39
     assert result.stats["rejected"] == 0
     assert result.stats["by_type"] == {
         "channel_outline_rule": 6,
-        "contraindication_rule": 1,
-        "formula_pattern_rule": 15,
-        "mistreatment_rule": 2,
+        "contraindication_rule": 4,
+        "formula_pattern_rule": 23,
+        "mistreatment_rule": 6,
     }
-    assert result.stats["formula_patterns"] == 14
+    assert result.stats["formula_patterns"] == 23
 
 
 def test_no_released_formula_rule_without_formula(result):
@@ -51,6 +51,14 @@ def test_review_audit_chain_valid(pipeline, result):
     assert pipeline.ledger.verify_chain("shanghan_pipeline")
     entries = pipeline.ledger.entries("shanghan_pipeline")
     assert len(entries) == result.stats["initial_rules"]
+
+
+def test_runtime_cache_shared(result):
+    """agents 与 MCP server 共享同一份管线结果,不重复构建。"""
+    from shanghan.runtime import default_rag, default_result
+
+    assert default_result() is default_result()
+    assert default_rag() is default_rag()
 
 
 def test_release_levels_are_engineering_confidence(result):

@@ -33,7 +33,9 @@ class FormulaMatcher:
             missing_core = [s for s in p.core_symptoms if s not in symptoms]
             core_w = sum(p.core_scores.get(s, 0.5) for s in matched_core)
             score = core_w + 0.3 * len(matched_assoc) + 0.4 * len(matched_pulse)
-            score -= 0.15 * len(missing_core)
+            # 缺失核心惩罚按核心证候数归一化,避免核心丰富的方剂被过度压制
+            if p.core_symptoms:
+                score -= 0.3 * len(missing_core) / len(p.core_symptoms)
             if matched_core or matched_assoc or matched_pulse:
                 results.append(
                     MatchResult(

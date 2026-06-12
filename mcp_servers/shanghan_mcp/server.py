@@ -12,19 +12,10 @@ import sys
 PROTOCOL_VERSION = "2024-11-05"
 SERVER_INFO = {"name": "shanghan-hermes", "version": "2.0.0"}
 
-_pipeline_result = None
-_rag = None
-
-
 def _ensure_pipeline():
-    global _pipeline_result, _rag
-    if _rag is None:
-        from shanghan.pipeline import ShanghanPipeline
-        from shanghan.skill_rag import SkillRAG
+    from shanghan.runtime import default_rag, default_result
 
-        _pipeline_result = ShanghanPipeline().run()
-        _rag = SkillRAG(_pipeline_result)
-    return _pipeline_result, _rag
+    return default_result(), default_rag()
 
 
 # ---------------------------------------------------------------- tools

@@ -1,5 +1,31 @@
 # CHANGELOG
 
+## 2026-06-12 (剩余优化项全量落地,PR #3)
+- 语法位置识别(P1-4): 前置强度标记(宜/与/可与/属)、治法禁忌
+  (不可发汗/不可下)、指代禁忌("不可服之"回指消解,referential 标注,
+  证据回源走指代路径)。
+- 语料 26→39 条(含 38/42/61/64/82/83/84/102/103/243/309/323/350),
+  方剂词典 14→23;管线 39 规则全放行(gold 28 / silver 11)。
+- 版本异文/注释对齐(评审十二): 锚点加权 + 一对一最大匹配 +
+  whitelist/blacklist + difflib 有序差异;demo 异文集 5 条全部正确对齐。
+- 金标准校准工具链(评审九): gold_standard.jsonl(engineer_seed)+
+  precision/recall/F1 报告 + `just shanghan-calibration`。
+- ManagerAgent 专科注册表路由(SPECIALTY_MAP),替换占位"取第一个"。
+- FormulaMatcher 缺失核心惩罚按核心数归一化。
+- 测试 499 项全绿(新增 29)。
+
+## 2026-06-12 (深度审核修复轮)
+- 修复 brancher 主方判定: 前置处置方剂比主方更长时被误判为主方
+  (改为收集全部提及,优先带强度/否定标记者并取最后提及)。
+- 修复 EvidenceVerifier 两处回源缺口: absent(否定条件)未绑定
+  condition_span;conclusion_offsets 未与原文对齐校验。
+- AutoRepair 同步清理不在 span 内的 absent 条件。
+- SixChannelInducer 改为注入 corpus index(尊重自定义语料根目录);
+  方证 associated 列表去重。
+- 新增 shanghan.runtime 共享缓存,agents 与 MCP server 复用同一份管线结果。
+- _h_formula 对无 pattern 方剂增加防御回退;每个修复均有回归测试,
+  测试总数 470 项全绿。
+
 ## 2026-06-12 (Shanghan-Hermes + LLM 多智能体层)
 - 新增 packages/llm-backend:litellm 统一后端(OpenAI/Anthropic/Gemini/MiniMax/
   私有化)+ LLMGateway(静态 system 模板/剂量出站/JSON schema 校验/重试修复/

@@ -42,12 +42,22 @@ class EvidenceVerifier:
         ):
             problems.append("condition_offsets 与条文原文不对齐")
 
+        cos, coe = rule.conclusion_offsets
+        if rule.conclusion_span and (
+            not (0 <= cos <= coe <= len(clause.text))
+            or clause.text[cos:coe] != rule.conclusion_span
+        ):
+            problems.append("conclusion_offsets 与条文原文不对齐")
+
         for term in rule.condition_terms():
             if term not in rule.condition_span:
                 problems.append(f"条件不在 condition_span 内: {term}")
         for term in rule.if_conditions.get("optional_symptoms", []):
             if term not in rule.condition_span:
                 problems.append(f"或然条件不在 condition_span 内: {term}")
+        for term in rule.if_conditions.get("absent", []):
+            if term not in rule.condition_span:
+                problems.append(f"否定条件不在 condition_span 内: {term}")
         prior = rule.if_conditions.get("prior_treatment")
         if prior and prior not in rule.condition_span:
             problems.append(f"误治前置不在 condition_span 内: {prior}")
@@ -59,7 +69,17 @@ class EvidenceVerifier:
         if strength and strength not in rule.conclusion_span:
             problems.append(f"强度标记不在 conclusion_span 内: {strength}")
         forbidden = rule.then_conclusions.get("forbidden_formula")
-        if forbidden and forbidden not in rule.conclusion_span:
-            problems.append(f"禁忌方剂不在 conclusion_span 内: {forbidden}")
+        if forbidden:
+            if rule.then_conclusions.get("referential"):
+                # 指代禁忌: 方剂须在条文全文中存在,且结论区间携带否定标记
+                if forbidden not in clause.text:
+                    problems.append(f"指代禁忌方剂不在条文中: {forbidden}")
+                if "不可" not in rule.conclusion_span:
+                    problems.append("指代禁忌结论区间缺少否定标记")
+            elif forbidden not in rule.conclusion_span:
+                problems.append(f"禁忌方剂不在 conclusion_span 内: {forbidden}")
+        therapy = rule.then_conclusions.get("forbidden_therapy")
+        if therapy and f"不可{therapy}" not in rule.conclusion_span:
+            problems.append(f"治法禁忌不在 conclusion_span 内: 不可{therapy}")
 
         return EvidenceReport(ok=not problems, problems=problems)
