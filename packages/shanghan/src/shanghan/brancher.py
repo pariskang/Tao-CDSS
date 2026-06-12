@@ -145,11 +145,34 @@ class ClauseBrancher:
         return segments
 
     def _find_formula(self, segment: str) -> tuple[str | None, int]:
-        for f in self._formulas:
-            idx = segment.find(f)
-            if idx != -1:
-                return f, idx
-        return None, -1
+        """选取主方: 收集全部方剂提及,优先带强度/否定标记者;
+        多个标记提及时取最后一个(评审第五条: 防止前置处置方被误判为主方)。"""
+        mentions: list[tuple[str, int]] = []
+        for f in self._formulas:  # 最长优先,避免子串误匹配
+            start = 0
+            while True:
+                idx = segment.find(f, start)
+                if idx == -1:
+                    break
+                inside_longer = any(
+                    m_idx <= idx and idx + len(f) <= m_idx + len(m_f)
+                    for m_f, m_idx in mentions
+                )
+                if not inside_longer:
+                    mentions.append((f, idx))
+                start = idx + len(f)
+        if not mentions:
+            return None, -1
+        marked = []
+        for f, idx in mentions:
+            after = segment[idx + len(f):]
+            before = segment[max(0, idx - 4):idx]
+            if any(after.startswith(m) for m in self._pos_markers) or any(
+                n in before for n in self._neg_markers
+            ):
+                marked.append((f, idx))
+        pool = marked or mentions
+        return max(pool, key=lambda x: x[1])
 
     def _polarity(self, segment: str, formula: str, f_idx: int) -> tuple[str, str | None]:
         window_before = segment[max(0, f_idx - 4):f_idx]

@@ -98,7 +98,7 @@ class SkillRAG:
 
     def _h_formula(self, question: str) -> dict:
         name = next((f for f in self._formula_names if f in question), None)
-        if name is None:
+        if name is None or name not in self._result.patterns:
             return self._h_generic(question)
         p = self._result.patterns[name]
         rules = [

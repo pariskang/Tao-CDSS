@@ -193,6 +193,17 @@ class TestAutoRepair:
         repaired, _, _ = AutoRepairAgent().repair(rule)
         assert isinstance(repaired, InitialRule)
 
+    def test_repair_cleans_fabricated_absent_terms(self, rules):
+        """回归: repair 同样清理不在 span 内的否定条件。"""
+        rule = guizhi_rule(rules)
+        conds = dict(rule.if_conditions)
+        conds["absent"] = ["虚构否定症状"]
+        fake = rule.model_copy(update={"if_conditions": conds})
+        repaired, repairs, must_reject = AutoRepairAgent().repair(fake)
+        assert not must_reject
+        assert "虚构否定症状" not in repaired.if_conditions.get("absent", [])
+        assert any("absent" in r for r in repairs)
+
 
 class TestMultiReviewerConsensus:
     def test_llm_reviewer_fail_blocks_release(self, index, rules):

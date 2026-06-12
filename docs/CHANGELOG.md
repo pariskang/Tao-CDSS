@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 2026-06-12 (深度审核修复轮)
+- 修复 brancher 主方判定: 前置处置方剂比主方更长时被误判为主方
+  (改为收集全部提及,优先带强度/否定标记者并取最后提及)。
+- 修复 EvidenceVerifier 两处回源缺口: absent(否定条件)未绑定
+  condition_span;conclusion_offsets 未与原文对齐校验。
+- AutoRepair 同步清理不在 span 内的 absent 条件。
+- SixChannelInducer 改为注入 corpus index(尊重自定义语料根目录);
+  方证 associated 列表去重。
+- 新增 shanghan.runtime 共享缓存,agents 与 MCP server 复用同一份管线结果。
+- _h_formula 对无 pattern 方剂增加防御回退;每个修复均有回归测试,
+  测试总数 470 项全绿。
+
 ## 2026-06-12 (Shanghan-Hermes + LLM 多智能体层)
 - 新增 packages/llm-backend:litellm 统一后端(OpenAI/Anthropic/Gemini/MiniMax/
   私有化)+ LLMGateway(静态 system 模板/剂量出站/JSON schema 校验/重试修复/

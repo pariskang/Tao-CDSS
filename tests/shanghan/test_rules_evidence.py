@@ -108,6 +108,24 @@ class TestEvidenceVerifier:
         report = verifier.verify(fake)
         assert not report.ok
 
+    def test_fabricated_absent_term_fails(self, rules, verifier):
+        """回归: 伪造的否定条件(absent)也必须绑定到 condition_span。"""
+        rule = rule_for_formula(rules, "大承气汤")
+        conds = dict(rule.if_conditions)
+        conds["absent"] = list(conds.get("absent", [])) + ["虚构否定症状"]
+        report = verifier.verify(rule.model_copy(update={"if_conditions": conds}))
+        assert not report.ok
+        assert any("虚构否定症状" in p for p in report.problems)
+
+    def test_tampered_conclusion_offsets_fail(self, rules, verifier):
+        """回归: conclusion_offsets 必须与条文原文逐字对齐。"""
+        rule = rule_for_formula(rules, "大承气汤")
+        report = verifier.verify(
+            rule.model_copy(update={"conclusion_offsets": (0, 5)})
+        )
+        assert not report.ok
+        assert any("conclusion_offsets" in p for p in report.problems)
+
     def test_cross_branch_condition_fails(self, rules, verifier):
         """同条文跨分支污染: 烦躁不得眠(B1)绑到五苓散(B2)必须失败。"""
         wuling = rule_for_formula(rules, "五苓散")

@@ -84,8 +84,7 @@ class FormulaPatternInducer:
                 key=lambda t: -core_scores[t],
             )
             associated = sorted(
-                [t for t in term_freq if t not in core] + sorted(optional),
-                key=str,
+                {t for t in term_freq if t not in core} | optional
             )
             patterns[formula] = FormulaPattern(
                 formula=formula,
@@ -131,6 +130,13 @@ class ChannelSummary:
 class SixChannelInducer:
     """在后世六经亚型框架约束下,对原文证据做自动锚定与结构化归纳。"""
 
+    def __init__(self, index: dict | None = None):
+        if index is None:
+            from shanghan.corpus import corpus_index
+
+            index = corpus_index()
+        self._index = index
+
     def induce(self, approved: list[ApprovedRule]) -> dict[str, ChannelSummary]:
         outlines = {
             ar.rule.then_conclusions["channel"]: ar
@@ -141,11 +147,8 @@ class SixChannelInducer:
         # 按条文 channel 字段锚定(语料携带篇章信息)
         return self._summaries(outlines, approved)
 
-    @staticmethod
-    def _summaries(outlines, approved) -> dict[str, ChannelSummary]:
-        from shanghan.corpus import corpus_index
-
-        index = corpus_index()
+    def _summaries(self, outlines, approved) -> dict[str, ChannelSummary]:
+        index = self._index
         formulas_by_channel: dict[str, set[str]] = defaultdict(set)
         for ar in approved:
             if ar.release_level == "rejected":

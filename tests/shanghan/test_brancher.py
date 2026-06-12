@@ -59,6 +59,18 @@ class TestPolarityAndStrength:
         assert b.formula == "白虎加人参汤"
         assert b.prior_treatment == "服桂枝汤"
 
+    def test_longer_prior_formula_does_not_steal_main(self):
+        """回归: 前置方剂比主方更长时,主方仍取带强度标记的最后提及。"""
+        from shanghan.corpus import Clause
+
+        synthetic = Clause(
+            clause_id="SHL_TEST", no=999, channel="taiyang", section="test",
+            text="服桂枝加附子汤后,头痛发热,无汗而喘者,麻黄汤主之。",
+        )
+        b = next(x for x in ClauseBrancher().split(synthetic) if x.polarity == "indicated")
+        assert b.formula == "麻黄汤"
+        assert b.strength == "主之"
+
 
 class TestOptionalAndOffsets:
     def test_optional_symptoms_clause_40(self):

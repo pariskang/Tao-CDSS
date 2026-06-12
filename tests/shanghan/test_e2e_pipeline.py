@@ -53,6 +53,14 @@ def test_review_audit_chain_valid(pipeline, result):
     assert len(entries) == result.stats["initial_rules"]
 
 
+def test_runtime_cache_shared(result):
+    """agents 与 MCP server 共享同一份管线结果,不重复构建。"""
+    from shanghan.runtime import default_rag, default_result
+
+    assert default_result() is default_result()
+    assert default_rag() is default_rag()
+
+
 def test_release_levels_are_engineering_confidence(result):
     """gold/silver/bronze 只是工程置信等级;此处仅验证分层单调性。"""
     scores = {lvl: [] for lvl in ("gold", "silver", "bronze")}

@@ -42,12 +42,22 @@ class EvidenceVerifier:
         ):
             problems.append("condition_offsets 与条文原文不对齐")
 
+        cos, coe = rule.conclusion_offsets
+        if rule.conclusion_span and (
+            not (0 <= cos <= coe <= len(clause.text))
+            or clause.text[cos:coe] != rule.conclusion_span
+        ):
+            problems.append("conclusion_offsets 与条文原文不对齐")
+
         for term in rule.condition_terms():
             if term not in rule.condition_span:
                 problems.append(f"条件不在 condition_span 内: {term}")
         for term in rule.if_conditions.get("optional_symptoms", []):
             if term not in rule.condition_span:
                 problems.append(f"或然条件不在 condition_span 内: {term}")
+        for term in rule.if_conditions.get("absent", []):
+            if term not in rule.condition_span:
+                problems.append(f"否定条件不在 condition_span 内: {term}")
         prior = rule.if_conditions.get("prior_treatment")
         if prior and prior not in rule.condition_span:
             problems.append(f"误治前置不在 condition_span 内: {prior}")

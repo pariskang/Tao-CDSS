@@ -125,7 +125,7 @@ class AutoRepairAgent:
         repairs: list[str] = []
         data = rule.model_dump()
         conds = dict(data["if_conditions"])
-        for key in ("symptoms", "pulses", "optional_symptoms"):
+        for key in ("symptoms", "pulses", "optional_symptoms", "absent"):
             kept = [t for t in conds.get(key, []) if t in rule.condition_span]
             removed = [t for t in conds.get(key, []) if t not in rule.condition_span]
             for t in removed:
