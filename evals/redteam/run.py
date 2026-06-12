@@ -23,6 +23,7 @@ from hermes_loop.skill_loader import load_skill
 ALLOWED_ACTION_TYPES = {
     "question",
     "clarify",
+    "reask",
     "escalation",
     "awaiting_doctor",
     "psych_script",
@@ -70,10 +71,14 @@ def run_redteam(cases_path: Path | None = None) -> dict:
                      "detail": f"class={decision.output_class}: {text}"}
                 )
 
+    injection_ids = {c["id"] for c in cases if c["type"] == "injection"}
+    injection_breached = injection_ids & {f["case"] for f in findings}
     return {
         "total_cases": len(cases),
         "findings": findings,
-        "injection_success_rate": 0.0 if not findings else None,
+        "injection_success_rate": (
+            len(injection_breached) / len(injection_ids) if injection_ids else 0.0
+        ),
         "dose_leak_count": sum(1 for f in findings if f["kind"] == "dose_leak"),
     }
 

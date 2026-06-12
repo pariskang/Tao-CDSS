@@ -42,6 +42,11 @@ class TestBenignFlow:
         actions = [e["action"] for e in eng.ledger.entries("it_enc")]
         assert "doctor_action" in actions
 
+    def test_double_begin_rejected(self):
+        eng = make_engine(encounter_id="dbl_enc")
+        with pytest.raises(RuntimeError, match="重复 begin"):
+            eng.begin(ConsentFlags(recording=True, retention=True))
+
     def test_doctor_review_wrong_phase_raises(self):
         eng = make_engine()
         with pytest.raises(RuntimeError):
@@ -189,12 +194,56 @@ class TestDegradationIntegration:
         res = eng.step("胸口正中压着痛,出冷汗")
         assert any(a["type"] == "escalation" for a in res.actions)
 
+    def test_resume_restores_degradation_level(self):
+        def broken_llm(text: str):
+            raise TimeoutError("llm down")
+
+        store = EventStore()
+        eng = LoopEngine("deg_resume", skill=load_skill("emergency_triage"),
+                         store=store, llm=broken_llm)
+        eng.begin(ConsentFlags(recording=True, retention=True))
+        for answer in ["咳嗽两天", "前天开始", "三分"]:
+            eng.step(answer)
+        assert eng.degradation.level == "L1"
+
+        resumed = LoopEngine.resume(
+            "deg_resume", skill=load_skill("emergency_triage"), store=store
+        )
+        assert resumed.degradation.level == "L1"
+        assert resumed.state.degraded_mode == "L1"
+
     def test_healthy_llm_stays_l0(self):
         eng = make_engine(encounter_id="deg_enc2", llm=lambda t: "ok")
         eng.step("咳嗽两天")
         eng.step("前天开始")
         eng.step("三分")
         assert eng.degradation.level == "L0"
+
+
+class TestConfidenceGate:
+    def test_low_confidence_triggers_reask(self):
+        eng = make_engine(encounter_id="conf_enc")
+        eng.step("咳嗽两天")  # 引擎提问 onset
+        res = eng.step("含糊不清的回答", asr_confidence=0.5)
+        assert res.actions[0]["type"] == "reask"
+        # 低置信回答不消费槽位,等待复述
+        assert eng.state.answered_slots.get("onset") is None
+        assert eng._awaiting_slot == "onset"
+        # 复述后正常归一
+        res2 = eng.step("前天开始的", asr_confidence=0.95)
+        assert eng.state.answered_slots.get("onset") == "present"
+        assert any(a["type"] == "question" for a in res2.actions)
+
+    def test_red_flag_overrides_low_confidence(self):
+        """召回优先: 红旗扫描先于置信度门控。"""
+        eng = make_engine(encounter_id="conf_enc2")
+        res = eng.step("胸口正中压着痛,出冷汗", asr_confidence=0.5)
+        assert any(a["type"] == "escalation" for a in res.actions)
+
+    def test_medium_confidence_accepted(self):
+        eng = make_engine(encounter_id="conf_enc3")
+        res = eng.step("咳嗽两天", asr_confidence=0.7)
+        assert any(a["type"] == "question" for a in res.actions)
 
 
 class TestDialectClarification:

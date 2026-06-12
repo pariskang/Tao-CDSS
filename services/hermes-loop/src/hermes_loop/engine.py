@@ -33,6 +33,7 @@ from hermes_loop.degradation import DegradationController
 from hermes_loop.question_planner import Slot, next_question
 from hermes_loop.skill_loader import Skill
 from hermes_loop.state_machine import set_escalation, transition
+from hermes_voice.mvsl import confidence as confidence_policy
 from hermes_voice.mvsl.hedge import detect as hedge_detect
 from redflag_engine import RedFlagEngine
 
@@ -159,6 +160,7 @@ class LoopEngine:
             self._clarified.add(p["term"])
         elif etype == "degraded":
             self.state.degraded_mode = p["level"]
+            self.degradation.level = p["level"]
         # doctor_action / summary 等事件无状态副作用
 
     @classmethod
@@ -181,6 +183,8 @@ class LoopEngine:
     def begin(
         self, consent: ConsentFlags | None = None, reporter: str = "self"
     ) -> ClinicalState:
+        if self.state.phase != Phase.CONSENT:
+            raise RuntimeError("会话已开始,禁止重复 begin(请用 resume 恢复)")
         consent = consent or ConsentFlags()
         self._emit(
             "encounter_started",
@@ -246,7 +250,7 @@ class LoopEngine:
         # 3) LLM 可选增强(失败自动降级,绝不阻断规则路径)
         self._try_llm(text)
 
-        # 4) 红旗扫描(纯规则,永不降级)
+        # 4) 红旗扫描(纯规则,永不降级;先于置信度门控——召回优先)
         scan = self.redflag.scan_texts(self.texts)
         if scan.hits:
             self._emit("red_flag_hits", {"hits": scan.hit_ids()})
@@ -255,15 +259,22 @@ class LoopEngine:
         if scan.level in ("E2", "E3", "E4"):
             self._maybe_soft_escalation(scan)
 
-        # 5) 已提问槽位的回答归一
+        # 5) 低置信转写请求复述(协议 L1.2: <0.65 复述;红旗扫描已在其前)
+        if confidence_policy.decide(asr_confidence) == "reask":
+            actions.append(
+                {"type": "reask", "prompt": "抱歉,我没有听清楚,请您再说一遍。"}
+            )
+            return StepResult(actions=actions, state=self.state)
+
+        # 6) 已提问槽位的回答归一
         if self._awaiting_slot is not None:
             self._record_answer(self._awaiting_slot, text, utt_id, asr_confidence)
 
-        # 6) 方言俗称消歧 + 槽位关键词抽取
+        # 7) 方言俗称消歧 + 槽位关键词抽取
         self._scan_lexicon(text, utt_id, asr_confidence, actions)
         self._match_slot_keywords(text, utt_id, asr_confidence)
 
-        # 7) 相变与选问
+        # 8) 相变与选问
         self._advance(text, actions)
         return StepResult(actions=actions, state=self.state)
 
