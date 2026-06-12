@@ -1,0 +1,20 @@
+# PENDING_PHYSICIAN_REVIEW
+slots:
+  - name: onset
+    question: 这种不舒服是什么时候开始的?
+    priority: 10
+    required: true
+  - name: severity
+    question: 不舒服的程度怎么样,0到10分您打几分?
+    priority: 20
+    required: true
+  - name: associated_symptoms
+    question: 还有没有其他不舒服,比如发烧、出汗、恶心?
+    priority: 30
+  - name: medication_history
+    question: 最近在吃什么药吗?
+    priority: 40
+  - name: allergy
+    question: 有没有药物或食物过敏?
+    priority: 41
+    required: true

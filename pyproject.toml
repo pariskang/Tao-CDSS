@@ -1,0 +1,37 @@
+[project]
+name = "hermes-cdss"
+version = "2.0.0"
+description = "Hermes-CDSS v2.0 — 方言友好·语音优先·状态感知·可审计的临床智能体协议与系统"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.7",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+llm = [
+    "litellm>=1.40",
+]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=5",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = [
+    ".",
+    "packages/contracts/src",
+    "packages/redflag-engine/src",
+    "packages/audit-chain/src",
+    "packages/eventstore/src",
+    "packages/shanghan/src",
+    "packages/llm-backend/src",
+    "services/hermes-guard/src",
+    "services/hermes-loop/src",
+    "services/hermes-broker/src",
+    "services/hermes-compose/src",
+    "services/hermes-voice/src",
+    "services/hermes-agents/src",
+]

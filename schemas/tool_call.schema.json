@@ -1,0 +1,64 @@
+{
+  "properties": {
+    "agent": {
+      "title": "Agent",
+      "type": "string"
+    },
+    "encounter_id": {
+      "title": "Encounter Id",
+      "type": "string"
+    },
+    "idempotency_key": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Idempotency Key"
+    },
+    "input": {
+      "additionalProperties": true,
+      "default": {},
+      "title": "Input",
+      "type": "object"
+    },
+    "policy": {
+      "additionalProperties": true,
+      "default": {},
+      "title": "Policy",
+      "type": "object"
+    },
+    "skill": {
+      "title": "Skill",
+      "type": "string"
+    },
+    "tool": {
+      "minLength": 1,
+      "title": "Tool",
+      "type": "string"
+    },
+    "tool_call_id": {
+      "title": "Tool Call Id",
+      "type": "string"
+    },
+    "trace": {
+      "additionalProperties": true,
+      "default": {},
+      "title": "Trace",
+      "type": "object"
+    }
+  },
+  "required": [
+    "tool_call_id",
+    "encounter_id",
+    "agent",
+    "skill",
+    "tool"
+  ],
+  "title": "ToolCallEnvelope",
+  "type": "object"
+}

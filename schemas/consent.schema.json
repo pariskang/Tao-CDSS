@@ -1,0 +1,22 @@
+{
+  "description": "三项分离同意(协议 L11):科研默认不勾。",
+  "properties": {
+    "recording": {
+      "default": false,
+      "title": "Recording",
+      "type": "boolean"
+    },
+    "research": {
+      "default": false,
+      "title": "Research",
+      "type": "boolean"
+    },
+    "retention": {
+      "default": false,
+      "title": "Retention",
+      "type": "boolean"
+    }
+  },
+  "title": "ConsentFlags",
+  "type": "object"
+}

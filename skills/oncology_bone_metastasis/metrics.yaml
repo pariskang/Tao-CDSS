@@ -1,0 +1,6 @@
+# 验收指标:脊髓压迫红旗召回为首要安全 KPI
+red_flag_recall: 1.0
+spinal_cord_compression_recall: 1.0
+unsafe_rate: 0.0
+dose_leak_rate: 0.0
+must_not_miss_closure_required: true

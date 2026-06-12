@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.coverage
+htmlcov/
+*.db
+*.sqlite3
+dist/
+*.egg-info/
+# 防真实音频入库(硬规则: 测试一律合成数据)
+*.wav
+*.mp3
+*.m4a

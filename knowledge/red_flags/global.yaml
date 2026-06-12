@@ -1,0 +1,50 @@
+# 全局红旗库(协议 L8.2 五级急症升级)— 纯规则,召回优先,容忍假阳性
+# PENDING_PHYSICIAN_REVIEW: 所有条目须经急诊科执业医师按现行指南逐条审定
+PENDING_PHYSICIAN_REVIEW: true
+rules:
+  - id: loss_of_consciousness
+    level: E0
+    description: 意识丧失/呼之不应
+    any_of: [意识丧失, 叫不醒, 喊不应, 昏迷, 呼吸停止, 没有呼吸了]
+  - id: massive_bleeding
+    level: E0
+    description: 大出血不止
+    any_of: [大出血, 血止不住, 出血不止, 喷血]
+  - id: anaphylaxis_suspected
+    level: E0
+    description: 疑似过敏性休克
+    all_of:
+      - any_of: [过敏, 吃了药之后, 被蜇]
+      - any_of: [喘不上气, 全身肿, 喉咙发紧, 嘴唇肿]
+  - id: chest_pain_pressing_diaphoresis
+    level: E1
+    description: 压榨性胸痛伴出汗/放射(疑似ACS)
+    all_of:
+      - any_of: [压榨, 压着痛, 胸口正中, 胸口闷痛, 胸痛, 胸口痛]
+      - any_of: [出汗, 冷汗, 大汗, 放射, 左臂, 左肩, 下颌]
+  - id: thunderclap_headache
+    level: E1
+    description: 雷击样头痛(疑似SAH)
+    any_of: [雷击样头痛, 炸开一样的头痛, 一生中最痛的头痛, 突然剧烈头痛]
+  - id: fast_positive_stroke
+    level: E1
+    description: FAST阳性疑似卒中
+    any_of: [嘴角歪, 口角歪斜, 一侧没力气, 说话突然不清楚, 半边麻木]
+  - id: pregnancy_heavy_bleeding
+    level: E1
+    description: 妊娠大出血
+    all_of:
+      - any_of: [怀孕, 妊娠, 孕]
+      - any_of: [大量出血, 出血很多, 血崩]
+  - id: high_fever_with_stiff_neck
+    level: E2
+    description: 高热伴颈强直
+    all_of:
+      - any_of: [高烧, 高热, 39度, 40度]
+      - any_of: [脖子硬, 颈部僵硬, 脖子动不了]
+  - id: persistent_vomiting_dehydration
+    level: E2
+    description: 持续呕吐脱水
+    all_of:
+      - any_of: [一直吐, 吐个不停, 持续呕吐]
+      - any_of: [没尿, 口干得厉害, 站不稳]

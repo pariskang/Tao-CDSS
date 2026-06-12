@@ -1,0 +1,44 @@
+name: ci
+on:
+  push:
+  pull_request:
+
+jobs:
+  safety:
+    # 永远第一个跑,失败即终止后续 job(策略3: 安全先于功能)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv venv .venv && uv pip install --python .venv/bin/python pydantic pyyaml pytest pytest-asyncio pytest-cov
+      - run: |
+          .venv/bin/python -m pytest tests/safety -q \
+            --cov=hermes_guard --cov=redflag_engine --cov=audit_chain \
+            --cov-fail-under=100
+
+  test:
+    needs: safety
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv venv .venv && uv pip install --python .venv/bin/python pydantic pyyaml pytest pytest-asyncio pytest-cov
+      - run: .venv/bin/python -m pytest -q
+      - name: 契约漂移检测
+        run: |
+          PYTHONPATH="packages/contracts/src" \
+            .venv/bin/python -m hermes_contracts.export_json_schema
+          git diff --exit-code schemas/
+
+  replay-and-redteam:
+    needs: test
+    runs-on: ubuntu-latest
+    env:
+      PYPATH: ".:packages/contracts/src:packages/redflag-engine/src:packages/audit-chain/src:packages/eventstore/src:services/hermes-guard/src:services/hermes-loop/src:services/hermes-broker/src:services/hermes-compose/src:services/hermes-voice/src"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv venv .venv && uv pip install --python .venv/bin/python pydantic pyyaml pytest pytest-asyncio pytest-cov
+      - run: PYTHONPATH="$PYPATH" .venv/bin/python -m evals.simulation.replay --skill emergency_triage
+      - run: PYTHONPATH="$PYPATH" .venv/bin/python -m evals.simulation.replay --skill oncology_bone_metastasis
+      - run: PYTHONPATH="$PYPATH" .venv/bin/python -m evals.redteam.run

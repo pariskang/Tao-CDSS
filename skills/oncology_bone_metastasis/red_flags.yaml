@@ -1,0 +1,28 @@
+# 脊髓压迫三联征为首要安全指标(任一阳性 → E1)
+# PENDING_PHYSICIAN_REVIEW
+rules:
+  - id: spinal_cord_compression_triad
+    level: E1
+    description: 脊髓压迫三联征任一阳性(鞍区麻木/二便障碍/进行性下肢无力)
+    any_of:
+      - 鞍区麻木
+      - 会阴麻木
+      - 会阴部麻木
+      - 骑跨区麻木
+      - 大小便失禁
+      - 大小便控制不住
+      - 小便排不出来
+      - 双腿越来越没力
+      - 腿越来越没劲
+      - 下肢无力加重
+      - 双腿没力气
+  - id: pathological_fracture_suspected
+    level: E2
+    description: 疑似病理性骨折
+    any_of: [翻身就剧痛, 轻轻一动就剧痛]
+  - id: hypercalcemia_suspected
+    level: E2
+    description: 疑似高钙血症
+    all_of:
+      - any_of: [极度口渴, 喝水也止不住渴]
+      - any_of: [嗜睡, 恶心呕吐]

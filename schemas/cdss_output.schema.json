@@ -1,0 +1,46 @@
+{
+  "properties": {
+    "claim_id": {
+      "title": "Claim Id",
+      "type": "string"
+    },
+    "claim_type": {
+      "pattern": "^(differential|investigation|risk|education|medication)$",
+      "title": "Claim Type",
+      "type": "string"
+    },
+    "evidence_bindings": {
+      "default": [],
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Evidence Bindings",
+      "type": "array"
+    },
+    "output_class": {
+      "maximum": 5,
+      "minimum": 0,
+      "title": "Output Class",
+      "type": "integer"
+    },
+    "text": {
+      "title": "Text",
+      "type": "string"
+    },
+    "verifier_nli": {
+      "default": "pending",
+      "pattern": "^(pending|entailed|neutral|contradicted)$",
+      "title": "Verifier Nli",
+      "type": "string"
+    }
+  },
+  "required": [
+    "claim_id",
+    "text",
+    "claim_type",
+    "output_class"
+  ],
+  "title": "CDSSClaim",
+  "type": "object"
+}

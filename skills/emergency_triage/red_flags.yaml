@@ -1,0 +1,4 @@
+# 本 skill 直接复用 knowledge/red_flags/global.yaml(引擎常驻加载),
+# 此处仅放置 skill 级补充规则。
+# PENDING_PHYSICIAN_REVIEW
+rules: []

@@ -1,0 +1,108 @@
+{
+  "$defs": {
+    "SourceRef": {
+      "description": "硬规则5: 任何临床字段必须可溯源。",
+      "properties": {
+        "asr_confidence": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Asr Confidence"
+        },
+        "kind": {
+          "pattern": "^(utterance|ehr|doctor_input|tool)$",
+          "title": "Kind",
+          "type": "string"
+        },
+        "ref_id": {
+          "minLength": 1,
+          "title": "Ref Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "ref_id"
+      ],
+      "title": "SourceRef",
+      "type": "object"
+    },
+    "SymptomStatus": {
+      "enum": [
+        "present",
+        "denied",
+        "probably_denied",
+        "uncertain",
+        "unknown"
+      ],
+      "title": "SymptomStatus",
+      "type": "string"
+    }
+  },
+  "properties": {
+    "concept_id": {
+      "title": "Concept Id",
+      "type": "string"
+    },
+    "onset": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Onset"
+    },
+    "raw_text": {
+      "title": "Raw Text",
+      "type": "string"
+    },
+    "secondhand": {
+      "default": false,
+      "title": "Secondhand",
+      "type": "boolean"
+    },
+    "severity": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Severity"
+    },
+    "sources": {
+      "items": {
+        "$ref": "#/$defs/SourceRef"
+      },
+      "minItems": 1,
+      "title": "Sources",
+      "type": "array"
+    },
+    "status": {
+      "$ref": "#/$defs/SymptomStatus"
+    }
+  },
+  "required": [
+    "concept_id",
+    "raw_text",
+    "status",
+    "sources"
+  ],
+  "title": "Symptom",
+  "type": "object"
+}

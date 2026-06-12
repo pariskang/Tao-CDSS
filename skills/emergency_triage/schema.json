@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "emergency_triage skill IO",
+  "type": "object",
+  "properties": {
+    "input": {"$ref": "../../schemas/clinical_state.schema.json"},
+    "output": {
+      "type": "object",
+      "properties": {
+        "escalation": {"enum": ["E0", "E1", "E2", "E3", "E4", null]},
+        "red_flag_hits": {"type": "array", "items": {"type": "string"}}
+      }
+    }
+  }
+}

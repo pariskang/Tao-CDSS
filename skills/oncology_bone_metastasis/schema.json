@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "oncology_bone_metastasis skill IO",
+  "type": "object",
+  "properties": {
+    "input": {"$ref": "../../schemas/clinical_state.schema.json"},
+    "output": {
+      "type": "object",
+      "properties": {
+        "spinal_cord_compression": {
+          "enum": ["not_excluded", "excluded", "confirmed_pending"]
+        },
+        "nrs": {"type": ["integer", "null"], "minimum": 0, "maximum": 10}
+      }
+    }
+  }
+}

@@ -1,0 +1,9 @@
+# oncology_bone_metastasis 工具白名单(HermesBroker 强制执行)
+triage.red_flag_check
+terminology.normalize_symptom
+terminology.map_drug_name
+calculator.nrs_pain
+calculator.ecog
+drug_safety.check_allergy
+drug_safety.check_interaction
+drug_safety.get_dose_range

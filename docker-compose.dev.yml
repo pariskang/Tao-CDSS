@@ -1,0 +1,17 @@
+# 开发基建(生产部署见协议 L10/L11: 院内私有化 + 等保三级)
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: hermes
+      POSTGRES_PASSWORD: hermes_dev_only
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+  redis:
+    image: redis:7
+    ports: ["6379:6379"]
+  qdrant:
+    image: qdrant/qdrant
+    ports: ["6333:6333"]
+volumes:
+  pgdata: {}
