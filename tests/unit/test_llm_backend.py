@@ -107,7 +107,8 @@ class TestGateway:
         assert ledger.verify_chain("t5")
         summary = gw.cost_log.summary()
         assert summary["calls"] == 1
-        assert summary["by_role"] == {"critic": 1}
+        assert summary["by_role"]["critic"]["calls"] == 1
+        assert summary["cost_unknown_calls"] == 0
 
 
 class TestLiteLLMBackend:

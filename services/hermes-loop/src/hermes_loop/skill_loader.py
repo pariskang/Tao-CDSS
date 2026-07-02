@@ -62,6 +62,16 @@ def load_skill(name: str, root: Path | None = None) -> Skill:
         )
         for m in slots_data.get("must_not_miss", [])
     ]
+    # 加载期一致性校验: discriminator 必须是已定义槽位,否则回补路径
+    # "有未闭环判别项但无可问槽位"会让引擎卡死——配置错误必须在加载期暴露
+    slot_names = {s.name for s in slots}
+    for m in mnm:
+        unknown = [d for d in m.discriminators if d not in slot_names]
+        if unknown:
+            raise ValueError(
+                f"skill {name}: must_not_miss[{m.condition}] 的判别项 "
+                f"{unknown} 不在 slots.yaml 定义的槽位中"
+            )
 
     red_flag_rules: list[dict] = []
     rf_path = base / "red_flags.yaml"

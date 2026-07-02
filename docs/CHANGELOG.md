@@ -1,6 +1,39 @@
 # CHANGELOG
 
-## 2026-06-12 (剩余优化项全量落地,PR #3)
+## 2026-07-02 (全项目审核 + 性能/健壮性修复轮)
+- LLM 网关性能包: 完整 JSON Schema 随 user 消息下发(替代仅类名)、
+  raw_decode JSON 抽取(容忍围栏/多对象)、修复重试携带字段级校验错误、
+  传输层异常纳入指数退避重试并审计 llm_call_failed、修复上下文回注
+  脱敏后文本(剂量原文不再回流模型上下文)。
+- LiteLLMBackend: temperature 可选 + drop_params(兼容已移除采样参数的
+  新一代模型)、response_format=json_object、成本未知用 -1 哨兵,
+  CostLog 单列 cost_unknown_calls 并按角色分账。
+- HermesAgents: 受限会诊与多评审并行化(独立性保持,顺序合并确定);
+  TCM RAG 检索单次执行(LLM 失败不再双跑);红旗引擎进程级共享。
+- HermesLoop: _emit 改为先 apply 后落库(毒事件不再损坏 resume);
+  DIFFERENTIAL 回补先确认有可问槽位再回 HPI;方言候选概念回喂红旗
+  扫描(心口疼→胸痛,否定不扩展);red_flag_hits 仅增量 emit;
+  槽位回答按关键词词窗判极性(混合极性句不再误判为否认);
+  doctor_review 增加 must_not_miss 裁决出口(打破 withheld 活锁);
+  skill 加载期校验 discriminator↔slot 一致性;"记不清"的必填槽位
+  允许重问一次。
+- HermesCompose: 患者通道被拦截句过剂量扫描后入 payload,
+  dose_violations 原文改为 dose_violation_count(硬规则1收紧)。
+- MCP servers: triage 拒绝非 list 输入(裸字符串不再拆单字漏报红旗);
+  terminology map_drug_name 修复优先级 bug(任意文本不再获得 drug_id);
+  drug_safety 过敏/相互作用比对大小写归一。
+- Shanghan: 鉴别 handler 无精确对时明确返回"未收录"而非无关对;
+  条文/generic 检索按实体词命中数排序;禁忌/误治按问句方剂过滤;
+  路由鉴别优先于禁忌;语料进程级缓存 + CLI 走 runtime 缓存 +
+  条文索引预建;患者脱敏扩古典单位(斤/丸/阿拉伯数字+两钱)、
+  煎服频次(日三服)与 tuple/set 递归。
+- 评测: replay 断言值为 false 不再被静默跳过(any_secondhand/psych/
+  no_escalation 双向断言);red_flag_recall 改为断言规则命中口径,
+  软升级计入。broker 幂等键按 (tool,key) 隔离,写工具正则补
+  store/export。safety-gate 覆盖 untracked 文件并扩展匹配面 +
+  100% 覆盖门。
+- 测试 513 项全绿(新增 14);安全三模块覆盖率 100%;红队回归与
+  双 skill SP 回放全通过。
 - 语法位置识别(P1-4): 前置强度标记(宜/与/可与/属)、治法禁忌
   (不可发汗/不可下)、指代禁忌("不可服之"回指消解,referential 标注,
   证据回源走指代路径)。

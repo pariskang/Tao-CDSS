@@ -14,7 +14,7 @@
 | 红旗引擎(L8.2) | `packages/redflag-engine` | ✅ 纯规则、零 LLM、五级升级 |
 | 审计哈希链(L8/L11) | `packages/audit-chain` | ✅ append-only + 篡改检测 |
 | 事件溯源 | `packages/eventstore` | ✅ 断线恢复/全量回放 |
-| HermesGuard(L8) | `services/hermes-guard` | ✅ 剂量出站/分级/心理旁路/注入/NLI/溯源 |
+| HermesGuard(L8) | `services/hermes-guard` | ✅ 剂量出站/分级/心理旁路/注入/溯源;证据校验为 bigram 启发式(二期换专用 NLI 小模型) |
 | HermesLoop(L3) | `services/hermes-loop` | ✅ SCOPE 状态机 + 价值驱动选问 + 三级降级 |
 | HermesBroker(L5) | `services/hermes-broker` | ✅ 十段治理管线(顺序由测试锁定) |
 | HermesVoice/M-VSL(L1) | `services/hermes-voice` | ✅ Stub ASR + hedge/混淆/回读/方言消歧(真 ASR 留接口) |
@@ -43,9 +43,13 @@ just shanghan-ask "桂枝汤和麻黄汤怎么鉴别"
 LLM 后端(可选,缺省走确定性 fallback):
 
 ```bash
-export HERMES_LLM_MODEL="anthropic/claude-sonnet-4-6"   # 任意 litellm 模型
+export HERMES_LLM_MODEL="anthropic/claude-sonnet-5"     # 任意 litellm 模型
 export HERMES_LLM_API_BASE="http://院内私有化端点/v1"     # 可选
 ```
+
+> 模型选型建议: 抽取/摘要类角色用 Sonnet 档即可;评审/仲裁类角色建议
+> Opus 档(`anthropic/claude-opus-4-8`)。新一代模型已移除采样参数,
+> 后端经 litellm `drop_params` 自动兼容,无需改代码。
 
 ## 安全红线(详见 CLAUDE.md 硬规则 1-6)
 

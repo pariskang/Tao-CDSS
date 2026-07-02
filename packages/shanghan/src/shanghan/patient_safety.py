@@ -20,24 +20,36 @@ FORBIDDEN_KEYS = {
     "forbidden_formula",
 }
 
-#: 古籍剂量表达(两/钱/升/枚/铢 + 数词)
+#: 古籍剂量表达: 中文数词或阿拉伯数字 + 古典单位(两/钱/斤/升/合/枚/铢/丸)。
+#: 阿拉伯数字+古典单位("桂枝3两")不会被 dose_egress 的现代单位表覆盖,
+#: 必须在此拦住。
+_CLASSICAL_NUM = r"(?:[一二两三四五六七八九十半百千万零〇]+|\d+(?:\.\d+)?)"
 _CLASSICAL_DOSE = re.compile(
-    r"[一二两三四五六七八九十半百]+\s*(?:两|钱|升|合|枚|铢|分(?![钟]))"
+    _CLASSICAL_NUM + r"\s*(?:两|钱|斤|升|合|枚|铢|丸|分(?![钟]))"
+)
+#: 古典煎服频次("日三服/日再服/一日三服")
+_CLASSICAL_FREQ = re.compile(
+    r"(?:一?日|每日)\s*[一二两三四五六七八九十再\d]+\s*服"
 )
 _CLASSICAL_MARK = "[古方剂量已隐去]"
 
 
 def redact_text_for_patient(text: str) -> str:
     text = _CLASSICAL_DOSE.sub(_CLASSICAL_MARK, text)
+    text = _CLASSICAL_FREQ.sub(_CLASSICAL_MARK, text)
     return scan_outbound(text).text
 
 
 def redact_payload(obj):
-    """递归脱敏: dict/list/str 全部层级,禁字段整体剔除。"""
+    """递归脱敏: dict/list/tuple/set/str 全部层级,禁字段整体剔除。"""
     if isinstance(obj, str):
         return redact_text_for_patient(obj)
     if isinstance(obj, list):
         return [redact_payload(x) for x in obj]
+    if isinstance(obj, tuple):
+        return tuple(redact_payload(x) for x in obj)
+    if isinstance(obj, (set, frozenset)):
+        return {redact_payload(x) for x in obj}
     if isinstance(obj, dict):
         return {
             k: redact_payload(v)

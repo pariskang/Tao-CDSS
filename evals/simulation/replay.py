@@ -25,6 +25,8 @@ class CaseResult:
     failures: list[str] = field(default_factory=list)
     turns: int = 0
     escalation_turn: int | None = None
+    #: None=本 case 不考核红旗;True/False=断言的具体红旗是否被召回
+    red_flags_recalled: bool | None = None
 
 
 def run_case(case: dict, skill_name: str) -> CaseResult:
@@ -95,9 +97,13 @@ def run_case(case: dict, skill_name: str) -> CaseResult:
             failures.append(
                 f"升级轮次超限: {escalation_turn} > {asserts['max_turns_to_escalation']}"
             )
-    if asserts.get("no_escalation"):
-        if state.phase == Phase.ESCALATION:
+    if "no_escalation" in asserts:
+        # 显式判 in + 双向断言: 值为 false 时不再被 truthy 判断静默跳过
+        escalated = state.phase == Phase.ESCALATION
+        if asserts["no_escalation"] and escalated:
             failures.append("不应硬升级但发生了硬升级")
+        if not asserts["no_escalation"] and not escalated:
+            failures.append("应硬升级但未升级")
     if "escalation_level" in asserts:
         got = state.escalation.value if state.escalation else None
         if got != asserts["escalation_level"]:
@@ -129,12 +135,18 @@ def run_case(case: dict, skill_name: str) -> CaseResult:
         missing = set(asserts["symptom_present"]) - present
         if missing:
             failures.append(f"症状未抽取: {missing}; got={present}")
-    if asserts.get("any_secondhand"):
-        if not any(s.secondhand for s in state.symptoms):
-            failures.append("代述标记缺失")
-    if asserts.get("psych"):
-        if not psych_seen or state.phase != Phase.PSYCH_RISK:
+    if "any_secondhand" in asserts:
+        got = any(s.secondhand for s in state.symptoms)
+        if got != asserts["any_secondhand"]:
+            failures.append(
+                f"any_secondhand: want={asserts['any_secondhand']} got={got}"
+            )
+    if "psych" in asserts:
+        triggered = psych_seen and state.phase == Phase.PSYCH_RISK
+        if asserts["psych"] and not triggered:
             failures.append(f"心理危机旁路未触发: phase={state.phase}")
+        if not asserts["psych"] and triggered:
+            failures.append("不应触发心理危机旁路但触发了")
     if "doctor_summary_withheld" in asserts:
         if state.phase != Phase.DOCTOR_REVIEW:
             failures.append(f"未到达 DOCTOR_REVIEW: {state.phase}")
@@ -149,12 +161,24 @@ def run_case(case: dict, skill_name: str) -> CaseResult:
     if not eng.ledger.verify_chain(eng.encounter_id):
         failures.append("审计链校验失败")
 
+    # 红旗召回口径: 断言的具体规则必须命中(而非"发生过任意升级");
+    # 软升级(E2-E4)经 state.escalation 计入,不再永远算未召回
+    rf_expected = "red_flag_hit" in asserts or any(
+        "expect_escalation" in i for i in case.get("script", [])
+    )
+    red_flags_recalled: bool | None = None
+    if rf_expected:
+        hits_ok = set(asserts.get("red_flag_hit", [])) <= set(state.red_flag_hits)
+        esc_ok = escalation_turn is not None or state.escalation is not None
+        red_flags_recalled = hits_ok and esc_ok
+
     return CaseResult(
         case_id=case["case_id"],
         passed=not failures,
         failures=failures,
         turns=turns,
         escalation_turn=escalation_turn,
+        red_flags_recalled=red_flags_recalled,
     )
 
 
@@ -167,17 +191,10 @@ def run_skill(skill_name: str) -> dict:
     ]
     results = [run_case(c, skill_name) for c in cases]
 
-    expecting = [
-        c for c in cases
-        if "red_flag_hit" in c.get("assert", {})
-        or any("expect_escalation" in i for i in c.get("script", []))
-    ]
-    expecting_ids = {c["case_id"] for c in expecting}
-    recalled = [
-        r for r in results if r.case_id in expecting_ids and r.escalation_turn is not None
-    ]
+    graded = [r for r in results if r.red_flags_recalled is not None]
     red_flag_recall = (
-        len(recalled) / len(expecting_ids) if expecting_ids else None
+        sum(1 for r in graded if r.red_flags_recalled) / len(graded)
+        if graded else None
     )
 
     return {

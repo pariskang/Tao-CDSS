@@ -106,6 +106,7 @@ class LoopEngine:
                 ]
             )
         self.texts: list[str] = []
+        self._concept_texts: list[str] = []
         self._utt = 0
         self._awaiting_slot: str | None = None
         self._clarified: set[str] = set()
@@ -113,8 +114,10 @@ class LoopEngine:
 
     # ------------------------------------------------------------------ events
     def _emit(self, event_type: str, payload: dict) -> None:
-        self._store.append(self.encounter_id, event_type, payload)
+        # 先 apply 后落库: apply 抛错(如非法相变)时事件不落库,
+        # 杜绝毒事件损坏事件流导致 resume 永久崩溃
         self._apply_event({"event_type": event_type, "payload": payload})
+        self._store.append(self.encounter_id, event_type, payload)
 
     def _apply_event(self, event: dict) -> None:
         etype, p = event["event_type"], event["payload"]
@@ -124,6 +127,7 @@ class LoopEngine:
             transition(self.state, Phase(p["to"]), actor=p.get("actor", "system"))
         elif etype == "utterance":
             self.texts.append(p["text"])
+            self._concept_texts.extend(self._expand_dialect(p["text"]))
             self._utt += 1
         elif etype == "psych_trigger":
             self._utt += 1
@@ -251,9 +255,13 @@ class LoopEngine:
         self._try_llm(text)
 
         # 4) 红旗扫描(纯规则,永不降级;先于置信度门控——召回优先)
-        scan = self.redflag.scan_texts(self.texts)
+        #    方言候选概念一并回喂: "心口疼"以[上腹痛,胸痛]参与匹配,
+        #    否则方言表述的急症永远不升级
+        scan = self.redflag.scan_texts(self.texts + self._concept_texts)
         if scan.hits:
-            self._emit("red_flag_hits", {"hits": scan.hit_ids()})
+            new_hits = set(scan.hit_ids()) - set(self.state.red_flag_hits)
+            if new_hits:  # 只在出现新命中时 emit,避免事件流随对话长度膨胀
+                self._emit("red_flag_hits", {"hits": sorted(new_hits)})
         if scan.level in ("E0", "E1"):
             return self._escalate(scan, actions)
         if scan.level in ("E2", "E3", "E4"):
@@ -327,10 +335,33 @@ class LoopEngine:
         ):
             self._emit("escalation", {"level": scan.level, "hits": scan.hit_ids()})
 
+    def _expand_dialect(self, text: str) -> list[str]:
+        """方言候选概念(供红旗扫描回喂)。被否定的词不扩展,
+        避免"没有心口疼"触发假升级;歧义词全部候选都保留(召回优先)。"""
+        expanded: list[str] = []
+        remaining = text
+        for term in sorted(self._lexicon, key=len, reverse=True):
+            if term not in remaining:
+                continue
+            remaining = remaining.replace(term, "□" * len(term))
+            status = hedge_detect(text, term=term).status
+            if status in (SymptomStatus.DENIED, SymptomStatus.PROBABLY_DENIED):
+                continue
+            expanded.extend(self._lexicon[term])
+        return expanded
+
     def _record_answer(
         self, slot_name: str, text: str, utt_id: str, conf: float
     ) -> None:
-        hedge = hedge_detect(text)
+        # 槽位关键词命中时按词窗判极性: "会阴麻木得厉害,但大便没有问题"
+        # 全文含"没有"会被误判为否认——恰是 must-not-miss 判别项的假阴性
+        slot = next((s for s in self.slots if s.name == slot_name), None)
+        term_hit = None
+        if slot is not None:
+            term_hit = next((k for k in slot.keywords if k in text), None)
+        hedge = (
+            hedge_detect(text, term=term_hit) if term_hit else hedge_detect(text)
+        )
         status = hedge.status
         self._emit("slot_answered", {"slot": slot_name, "status": status.value})
         self._emit(
@@ -458,9 +489,11 @@ class LoopEngine:
             if d not in self.state.asked_slots and d not in self.state.answered_slots
         }
         if blocking and open_disc and self.state.question_count < MAX_QUESTIONS:
-            self._emit("phase_change", {"to": Phase.HPI.value})
+            # 先确认真有可问槽位再回 HPI: 若 discriminator 名不在 slots 中,
+            # 回 HPI 后无问可问会卡死(HPI 无通往 EVIDENCE 的合法相变)
             q = next_question(self.state, self.slots)
             if q is not None:
+                self._emit("phase_change", {"to": Phase.HPI.value})
                 self._emit(
                     "question_asked", {"slot": q.slot, "rationale": q.rationale}
                 )
@@ -481,20 +514,39 @@ class LoopEngine:
 
     # ------------------------------------------------------------------ doctor
     def doctor_review(
-        self, decision: str = "adopt", doctor_id: str = "doctor", note: str = ""
+        self, decision: str = "adopt", doctor_id: str = "doctor", note: str = "",
+        resolved_conditions: dict[str, str] | None = None,
     ) -> dict:
-        """医生采纳/修改/拒绝,全部留痕(协议 L8)。"""
+        """医生采纳/修改/拒绝,全部留痕(协议 L8)。
+
+        resolved_conditions: 医生对 must_not_miss 条目的裁决
+        (condition → excluded|confirmed_pending),带 doctor 留痕。
+        没有该出口时,判别项被答 present 且槽位耗尽的会话会在
+        DOCTOR_REVIEW 相永久活锁(withheld 无穷循环)。
+        """
         if self.state.phase != Phase.DOCTOR_REVIEW:
             raise RuntimeError(f"当前相 {self.state.phase} 不可执行医生审核")
         if decision not in ("adopt", "modify", "reject"):
             raise ValueError(f"非法医生决策: {decision}")
+        for cond, st in (resolved_conditions or {}).items():
+            if st not in ("excluded", "confirmed_pending"):
+                raise ValueError(f"非法 must_not_miss 裁决: {cond}={st}")
         self.ledger.append(
             self.encounter_id,
             doctor_id,
             "doctor_action",
-            {"decision": decision, "note": note},
+            {"decision": decision, "note": note,
+             "resolved_conditions": dict(resolved_conditions or {})},
         )
         self._emit("doctor_action", {"decision": decision, "doctor_id": doctor_id})
+        for cond, st in (resolved_conditions or {}).items():
+            for item in self.state.differential.must_not_miss:
+                if item.condition == cond:
+                    self._emit(
+                        "must_not_miss_update",
+                        {"condition": cond, "status": st,
+                         "discriminators_pending": []},
+                    )
         blocking = self.state.differential.blocking_items()
         if blocking and self.state.question_count < MAX_QUESTIONS:
             # 不变量B: must_not_miss 未闭环且未达提问上限 → 患者摘要扣留

@@ -39,11 +39,24 @@ def normalize_symptom(text: str, dialect_region: str | None = None) -> dict:
     return {"text": text, "dialect_region": dialect_region, "matches": matches}
 
 
-def map_drug_name(text: str) -> dict:
+@lru_cache(maxsize=1)
+def _known_drugs() -> frozenset[str]:
     pairs = _confusion_pairs()
+    known = set(pairs)
+    for variants in pairs.values():
+        known.update(variants)
+    return frozenset(known)
+
+
+def map_drug_name(text: str) -> dict:
+    """归一药名。只有词表内的药名才给 drug_id;未知文本返回 None,
+    绝不把任意口述文本冒充为已归一的药物 ID。"""
+    pairs = _confusion_pairs()
+    known = text in _known_drugs()
     return {
         "text": text,
-        "drug_id": f"local:{text}" if text in pairs or text else None,
+        "drug_id": f"local:{text}" if known else None,
+        "known": known,
         "confusion_pairs": list(pairs.get(text, [])),
         "requires_double_confirm": text in pairs,
     }

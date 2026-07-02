@@ -50,6 +50,14 @@ class TestPatientSummary:
         summary = compose_patient_summary(state)
         assert "400mg" not in summary["text"]
 
+    def test_blocked_sentence_never_leaks_dose(self):
+        """被 scope 拦截的句子也不得以原文(含剂量)出现在患者 payload 任何字段。"""
+        state = make_state(
+            chief_complaints=["医生诊断为心绞痛,让我每天吃100mg阿司匹林"]
+        )
+        summary = compose_patient_summary(state)
+        assert "100mg" not in str(summary)
+
     def test_summary_structure(self):
         summary = compose_patient_summary(make_state())
         assert summary["channel"] == "patient"

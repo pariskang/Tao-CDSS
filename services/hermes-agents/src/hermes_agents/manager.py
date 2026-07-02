@@ -7,6 +7,7 @@ complex  → 受限会诊: ≤3 个 specialist 各自独立输出 → Manager �
 """
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 from hermes_agents.base import AgentResult, BaseAgent
@@ -90,9 +91,16 @@ class ManagerAgent(BaseAgent):
 
         outputs: list[AgentResult] = [safety, self._intake.run(task)]
         if complexity in ("moderate", "complex"):
-            # 受限会诊: 各 specialist 独立运行(无相互上下文),Manager 合成
-            for sp in self._select_specialists(task, complexity):
-                outputs.append(sp.run(task))
+            # 受限会诊: 各 specialist 独立运行(无相互上下文),Manager 合成;
+            # 独立性使其天然可并行,结果按选择顺序合并保持确定性
+            specialists = self._select_specialists(task, complexity)
+            if len(specialists) > 1:
+                with ThreadPoolExecutor(
+                    max_workers=min(MAX_CONSULT_SPECIALISTS, len(specialists))
+                ) as pool:
+                    outputs.extend(pool.map(lambda sp: sp.run(task), specialists))
+            else:
+                outputs.extend(sp.run(task) for sp in specialists)
 
         merged = self._merge(outputs, task)
         return ConsultResult(

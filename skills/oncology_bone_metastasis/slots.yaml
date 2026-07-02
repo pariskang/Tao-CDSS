@@ -8,18 +8,22 @@ must_not_miss:
       - bowel_bladder_dysfunction
       - progressive_leg_weakness
 slots:
+  # keywords 为工程抽取锚点(词窗极性判定用),非临床内容
   - name: saddle_anesthesia
     question: 会阴部或者骑跨部位有没有麻木的感觉?
     priority: 1
     red_flag: true
+    keywords: [会阴, 骑跨, 麻木, 麻]
   - name: bowel_bladder_dysfunction
     question: 最近大小便控制得怎么样,有没有失禁或者排不出来的情况?
     priority: 2
     red_flag: true
+    keywords: [失禁, 排不出, 拉不出, 尿不出]
   - name: progressive_leg_weakness
     question: 双腿的力气最近有没有越来越差?
     priority: 3
     red_flag: true
+    keywords: [没力气, 无力, 使不上劲]
   - name: pain_location
     question: 疼痛主要在什么部位?
     priority: 10

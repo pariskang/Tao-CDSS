@@ -29,13 +29,22 @@ class CostLog:
         )
 
     def summary(self) -> dict:
+        # cost_usd < 0 是"成本未知"哨兵(私有化端点/未收录模型),不计入合计
+        known = [e for e in self.entries if e.cost_usd >= 0]
+        roles = sorted({e.role for e in self.entries})
         return {
             "calls": len(self.entries),
             "prompt_tokens": sum(e.prompt_tokens for e in self.entries),
             "completion_tokens": sum(e.completion_tokens for e in self.entries),
-            "cost_usd": round(sum(e.cost_usd for e in self.entries), 6),
+            "cost_usd": round(sum(e.cost_usd for e in known), 6),
+            "cost_unknown_calls": len(self.entries) - len(known),
             "by_role": {
-                role: sum(1 for e in self.entries if e.role == role)
-                for role in sorted({e.role for e in self.entries})
+                role: {
+                    "calls": sum(1 for e in self.entries if e.role == role),
+                    "cost_usd": round(
+                        sum(e.cost_usd for e in known if e.role == role), 6
+                    ),
+                }
+                for role in roles
             },
         }

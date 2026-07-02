@@ -32,6 +32,7 @@ class SkillRAG:
         self._matcher = FormulaMatcher(result.patterns)
         self._paper = PaperDraftGenerator()
         self._clauses = load_corpus()
+        self._clause_index = {c.clause_id: c for c in self._clauses}
         self._formula_names = sorted(result.patterns, key=len, reverse=True)
 
     # ------------------------------------------------------------------ route
@@ -42,10 +43,12 @@ class SkillRAG:
             return "paper"
         if any(k in question for k in ("误治", "坏病", "反下", "误汗", "误下")):
             return "mistreatment"
-        if any(k in question for k in ("禁忌", "不可与", "不能用")):
-            return "contraindication"
+        # 鉴别优先于禁忌: "A和B的鉴别与禁忌"这类混合问句按鉴别处理,
+        # 鉴别 handler 的输出天然携带两方的判别信息
         if any(k in question for k in ("鉴别", "区别", "怎么分")):
             return "differential"
+        if any(k in question for k in ("禁忌", "不可与", "不能用")):
+            return "contraindication"
         if any(k in question for k in ("六经", "提纲")):
             return "six_channel"
         if _CLAUSE_NO.search(question) or "条文" in question or "原文" in question:
@@ -124,22 +127,33 @@ class SkillRAG:
             "evidence": self._evidence_for(p.supporting_clauses),
         }
 
+    def _rules_of_type(self, rule_type: str, question: str) -> list[dict]:
+        """按类型取规则;问句提及具体方剂时只保留与之相关的规则,
+        避免把全库禁忌/误治一股脑返回造成误导。"""
+        mentioned = {f for f in self._formula_names if f in question}
+        views = []
+        for ar in self._result.approved:
+            if ar.release_level == "rejected" or ar.rule.rule_type != rule_type:
+                continue
+            if mentioned:
+                concl = ar.rule.then_conclusions
+                related = {
+                    concl.get("formula"), concl.get("forbidden_formula")
+                } & mentioned
+                span_related = any(
+                    f in (ar.rule.evidence_span or "") for f in mentioned
+                )
+                if not related and not span_related:
+                    continue
+            views.append(self._rule_view(ar))
+        return views
+
     def _h_mistreatment(self, question: str) -> dict:
-        rules = [
-            self._rule_view(ar)
-            for ar in self._result.approved
-            if ar.release_level != "rejected"
-            and ar.rule.rule_type == "mistreatment_rule"
-        ]
+        rules = self._rules_of_type("mistreatment_rule", question)
         return {"answer": "误治/变证救治规则", "rules": rules}
 
     def _h_contraindication(self, question: str) -> dict:
-        rules = [
-            self._rule_view(ar)
-            for ar in self._result.approved
-            if ar.release_level != "rejected"
-            and ar.rule.rule_type == "contraindication_rule"
-        ]
+        rules = self._rules_of_type("contraindication_rule", question)
         return {"answer": "禁忌规则(不可与)", "rules": rules}
 
     def _h_therapy(self, question: str) -> dict:
@@ -180,9 +194,20 @@ class SkillRAG:
             no = int(m.group(1))
             hits = [c for c in self._clauses if c.no == no]
         else:
-            hits = [c for c in self._clauses if any(ch in question for ch in c.text[:6])]
+            # 无条号时按问句中的实体词/方剂名检索并按命中数排序,
+            # 单字符包含匹配(问句含"太""病"即命中)近乎随机,已废弃
+            symptoms, pulses = self._parse_findings(question)
+            terms = set(symptoms + pulses)
+            terms.update(f for f in self._formula_names if f in question)
+            scored = [
+                (sum(1 for t in terms if t in c.text), c)
+                for c in self._clauses
+            ]
+            hits = [c for score, c in
+                    sorted(scored, key=lambda x: -x[0]) if score > 0]
         return {
-            "answer": "条文检索结果",
+            "answer": "条文检索结果" if hits else
+                      "未检索到相关条文(问句中未识别出条号或已收录的证候/方剂名)",
             "clauses": [
                 {"clause_id": c.clause_id, "no": c.no, "channel": c.channel,
                  "text": c.text}
@@ -208,12 +233,22 @@ class SkillRAG:
     def _h_differential(self, question: str) -> dict:
         mentioned = [f for f in self._formula_names if f in question]
         pairs = self._result.differentials
+        answer = "方证鉴别对"
         if len(mentioned) >= 2:
-            want = set(mentioned[:2])
+            # 按问句出现顺序取前两个方剂
+            ordered = sorted(mentioned, key=question.find)
+            want = set(ordered[:2])
             exact = [p for p in pairs if {p.formula_a, p.formula_b} == want]
-            pairs = exact or pairs
+            if not exact:
+                # 找不到精确对时明确说"没有",绝不回退到无关鉴别对误导使用者
+                return {
+                    "answer": f"当前语料未归纳出 {'、'.join(ordered[:2])} 的"
+                              "共有证候鉴别对(可能两方证候无交集或语料未覆盖)",
+                    "pairs": [],
+                }
+            pairs = exact
         return {
-            "answer": "方证鉴别对",
+            "answer": answer,
             "pairs": [
                 {
                     "formula_a": p.formula_a,
@@ -229,9 +264,11 @@ class SkillRAG:
     def _h_generic(self, question: str) -> dict:
         symptoms, pulses = self._parse_findings(question)
         terms = symptoms + pulses
-        hits = [
-            c for c in self._clauses if any(t in c.text for t in terms)
+        # 按命中词数降序,多词命中的条文优先于语料序
+        scored = [
+            (sum(1 for t in terms if t in c.text), c) for c in self._clauses
         ] if terms else []
+        hits = [c for score, c in sorted(scored, key=lambda x: -x[0]) if score > 0]
         return {
             "answer": "原文证据检索(generic)",
             "evidence": [
@@ -241,11 +278,10 @@ class SkillRAG:
 
     # ------------------------------------------------------------------ helpers
     def _evidence_for(self, clause_ids: list[str]) -> list[dict]:
-        index = {c.clause_id: c for c in self._clauses}
         return [
-            {"clause_id": cid, "text": index[cid].text}
+            {"clause_id": cid, "text": self._clause_index[cid].text}
             for cid in clause_ids
-            if cid in index
+            if cid in self._clause_index
         ]
 
     @staticmethod

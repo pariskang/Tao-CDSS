@@ -49,7 +49,16 @@ def next_question(
     if state.question_count >= MAX_QUESTIONS:
         return None
     closed = set(state.asked_slots) | set(state.answered_slots)
-    open_slots = [s for s in slots if s.name not in closed]
+    # "记不清"(unknown)不永久关闭必填槽位: 允许换一次问法再问,
+    # 最多重问一次(asked 计数≥2 后不再重开),避免无限循环
+    reopen = {
+        name
+        for name, status in state.answered_slots.items()
+        if status == "unknown"
+        and state.asked_slots.count(name) < 2
+        and any(s.name == name and s.required for s in slots)
+    }
+    open_slots = [s for s in slots if s.name not in closed or s.name in reopen]
     if not open_slots:
         return None
 

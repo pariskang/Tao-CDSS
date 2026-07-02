@@ -39,8 +39,11 @@ def compose_patient_summary(
         if decision.allowed:
             kept.append(sent)
         else:
+            # 被拦截句同样过剂量出站扫描后再入 payload: 患者通道的任何
+            # 字段都可能被前端直接下发,原文(含剂量)不得出现(硬规则1)
             blocked.append(
-                {"text": sent, "output_class": decision.output_class,
+                {"text": scan_outbound(sent).text,
+                 "output_class": decision.output_class,
                  "reasons": decision.reasons}
             )
     text = "".join(kept)
@@ -49,7 +52,8 @@ def compose_patient_summary(
         "channel": "patient",
         "text": egress.text,
         "blocked_sentences": blocked,
-        "dose_violations": [v.text for v in egress.violations],
+        # 患者通道只暴露违规计数,不回显剂量原文
+        "dose_violation_count": len(egress.violations),
     }
 
 

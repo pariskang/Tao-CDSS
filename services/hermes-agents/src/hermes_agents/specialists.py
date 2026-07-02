@@ -1,10 +1,20 @@
 """bounded specialists — 每个专科 Agent 都是"工具",输出回 Manager 合成。"""
 from __future__ import annotations
 
+from functools import lru_cache
+
 from hermes_agents.base import AgentResult, BaseAgent
 from hermes_contracts.paths import repo_root
 from hermes_llm.structured import SCHEMAS
 from redflag_engine import RedFlagEngine
+
+
+@lru_cache(maxsize=1)
+def _global_redflag_engine() -> RedFlagEngine:
+    """红旗库进程级共享,避免每个 Agent 实例重复读盘解析 YAML。"""
+    return RedFlagEngine.from_yaml(
+        repo_root() / "knowledge" / "red_flags" / "global.yaml"
+    )
 
 
 class IntakeAgent(BaseAgent):
@@ -41,9 +51,7 @@ class SafetyTriageAgent(BaseAgent):
 
     def __init__(self, gateway=None):
         super().__init__(gateway=None)
-        self._engine = RedFlagEngine.from_yaml(
-            repo_root() / "knowledge" / "red_flags" / "global.yaml"
-        )
+        self._engine = _global_redflag_engine()
 
     def fallback(self, task: dict) -> dict:
         result = self._engine.scan_texts(list(task.get("texts", [])))
@@ -68,13 +76,23 @@ class TCMReasoningAgent(BaseAgent):
         question = "匹配什么方证? " + " ".join(task.get("texts", []))
         return self._rag.ask(question, role="doctor")
 
-    def _llm_run(self, task: dict) -> dict:
+    def run(self, task: dict) -> AgentResult:
+        """RAG 检索只执行一次;LLM 总结失败时直接复用同一 payload 兜底,
+        且 RAG 自身异常不会被误当作 LLM 失败吞进兜底路径。"""
         payload = self._rag_match(task)
-        summary = self._gateway.structured_call(
-            self.role, {"rag": payload}, SCHEMAS["SummaryModel"]
-        )
-        payload["summary_bullets"] = summary.model_dump()["bullets"]
-        return payload
+        if self._gateway is not None:
+            try:
+                summary = self._gateway.structured_call(
+                    self.role, {"rag": payload}, SCHEMAS["SummaryModel"]
+                )
+                payload["summary_bullets"] = summary.model_dump()["bullets"]
+                return AgentResult(agent=self.name, output=payload, used_llm=True)
+            except Exception as e:
+                return AgentResult(
+                    agent=self.name, output=payload, used_llm=False,
+                    notes=[f"llm_fallback:{type(e).__name__}"],
+                )
+        return AgentResult(agent=self.name, output=payload)
 
     def fallback(self, task: dict) -> dict:
         return self._rag_match(task)

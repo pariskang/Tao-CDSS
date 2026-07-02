@@ -126,3 +126,20 @@ class TestPatientGovernance:
         text = str(out)
         assert "三两" not in text
         assert "governance" in out
+
+    def test_arabic_digit_with_classical_unit_redacted(self):
+        """阿拉伯数字+古典单位不在 dose_egress 现代单位表内,必须由本层拦截。"""
+        out = redact_payload({"text": "桂枝3两,石膏一斤,每服十丸"})
+        s = str(out)
+        assert "3两" not in s and "一斤" not in s and "十丸" not in s
+
+    def test_classical_frequency_redacted(self):
+        out = redact_payload({"text": "温服一升,日三服"})
+        assert "日三服" not in str(out)
+
+    def test_tuple_and_set_recursed(self):
+        """递归脱敏覆盖 tuple/set 容器,嵌套剂量不得原样透出。"""
+        out = redact_payload({"a": ("桂枝三两", "每次200mg"), "b": {"日三服"}})
+        s = str(out)
+        assert "三两" not in s and "200mg" not in s and "日三服" not in s
+        assert isinstance(out["a"], tuple) and isinstance(out["b"], set)

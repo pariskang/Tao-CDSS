@@ -260,3 +260,71 @@ class TestDialectClarification:
         eng = make_engine(encounter_id="dia_enc2")
         eng.step("这两天有点气紧")
         assert any(s.concept_id == "呼吸困难" for s in eng.state.symptoms)
+
+    def test_dialect_expansion_feeds_redflag(self):
+        """方言候选概念回喂红旗扫描: "心口疼"以[上腹痛,胸痛]参与匹配,
+        伴冷汗时按疑似ACS升级,不再因方言表述漏判。"""
+        eng = make_engine(encounter_id="dia_rf")
+        res = eng.step("心口疼得厉害,还出冷汗")
+        assert eng.state.phase == Phase.ESCALATION
+        esc = next(a for a in res.actions if a["type"] == "escalation")
+        assert esc["level"] == "E1"
+        assert "chest_pain_pressing_diaphoresis" in esc["hits"]
+
+    def test_negated_dialect_not_expanded(self):
+        """被否定的方言词不扩展: "没有心口疼"不得触发假升级。"""
+        eng = make_engine(encounter_id="dia_rf_neg")
+        eng.step("没有心口疼,就是有点咳嗽,也没出汗")
+        assert eng.state.phase != Phase.ESCALATION
+        assert eng.state.escalation is None
+
+
+class TestAnswerPolarity:
+    def test_mixed_polarity_answer_not_misread_as_denial(self):
+        """"会阴麻木得厉害,但大便没有问题"按词窗判极性:
+        明确肯定的判别症状不得被全文中的"没有"误判为否认。"""
+        eng = make_engine(encounter_id="pol_enc",
+                          skill_name="oncology_bone_metastasis")
+        eng.step("腰背痛两周了")  # 首问 saddle_anesthesia
+        eng.step("会阴那里麻木得厉害,但是大便没有问题")
+        item = eng.state.differential.must_not_miss[0]
+        assert item.status == "not_excluded"
+        assert "saddle_anesthesia" not in item.discriminators_pending or \
+            eng.state.answered_slots.get("saddle_anesthesia") == "present"
+        assert eng.state.answered_slots["saddle_anesthesia"] == "present"
+
+
+class TestDoctorAdjudication:
+    def _to_review(self):
+        eng = make_engine(encounter_id="adj_enc",
+                          skill_name="oncology_bone_metastasis")
+        eng.step("腰背痛一个月")
+        eng.step("好像没有吧")  # probably_denied → 保持 blocking
+        eng.step("没有")
+        eng.step("没有")
+        while eng.state.phase == Phase.HPI:
+            eng.step("没有")
+        assert eng.state.phase == Phase.DOCTOR_REVIEW
+        return eng
+
+    def test_doctor_resolution_breaks_withheld_loop(self):
+        eng = self._to_review()
+        assert eng.doctor_review()["withheld"]
+        review = eng.doctor_review(
+            decision="adopt", doctor_id="dr_007",
+            resolved_conditions={"spinal_cord_compression": "excluded"},
+        )
+        assert not review["withheld"]
+        assert eng.state.phase == Phase.END
+        entry = [e for e in eng.ledger.entries("adj_enc")
+                 if e["action"] == "doctor_action"][-1]
+        assert entry["payload"]["data"]["resolved_conditions"] == {
+            "spinal_cord_compression": "excluded"
+        }
+
+    def test_invalid_resolution_rejected(self):
+        eng = self._to_review()
+        with pytest.raises(ValueError, match="非法 must_not_miss"):
+            eng.doctor_review(
+                resolved_conditions={"spinal_cord_compression": "cured"}
+            )
