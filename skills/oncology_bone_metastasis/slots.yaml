@@ -1,5 +1,10 @@
 # OLDCARTS 实例化 + 脊髓压迫判别槽位
 # PENDING_PHYSICIAN_REVIEW
+#
+# 可选: lr_table 激活价值驱动选问的信息增益分支(协议 L3.2)。
+# 似然比是临床数值,必须由执业医师按文献审定后启用,示例:
+# lr_table:
+#   - {slot: night_pain, condition: spinal_cord_compression, lr: 2.0}
 must_not_miss:
   - condition: spinal_cord_compression
     probability: 0.06

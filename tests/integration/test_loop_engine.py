@@ -219,6 +219,28 @@ class TestDegradationIntegration:
         eng.step("三分")
         assert eng.degradation.level == "L0"
 
+    def test_l2_reachable_from_l1(self):
+        """L1 时 LLM 仍受限调用(mode=extract_only),持续失败可自动到 L2;
+        此前 L1 后 LLM 永不再被调用,L2 是不可达死档。"""
+        modes = []
+
+        def broken_llm(text, mode=None):
+            modes.append(mode)
+            raise TimeoutError("llm down")
+
+        eng = make_engine(encounter_id="deg_l2", llm=broken_llm)
+        for answer in ["咳嗽两天", "前天开始", "三分",
+                       "没有过敏", "没有", "还有点鼻塞"]:
+            eng.step(answer)
+        assert eng.degradation.level == "L2"
+        assert eng.state.degraded_mode == "L2"
+        assert "extract_only" in modes  # L1 阶段以受限模式调用
+        # L2 后 LLM 完全旁路,红旗照常
+        calls_at_l2 = len(modes)
+        res = eng.step("突然剧烈头痛")
+        assert len(modes) == calls_at_l2
+        assert any(a["type"] == "escalation" for a in res.actions)
+
 
 class TestConfidenceGate:
     def test_low_confidence_triggers_reask(self):
@@ -277,6 +299,56 @@ class TestDialectClarification:
         eng.step("没有心口疼,就是有点咳嗽,也没出汗")
         assert eng.state.phase != Phase.ESCALATION
         assert eng.state.escalation is None
+
+
+class TestClosedLoops:
+    def test_hard_escalation_notifies_human(self):
+        """E1 话术承诺"已通知分诊台",系统必须真发 notify_human 并留痕。"""
+        eng = make_engine(encounter_id="notif_enc")
+        res = eng.step("突然剧烈头痛,炸开一样")
+        notify = next(a for a in res.actions if a["type"] == "notify_human")
+        assert notify["reason"] == "red_flag_E1"
+        assert any(
+            e["action"] == "notify_human"
+            for e in eng.ledger.entries("notif_enc")
+        )
+
+    def test_clarify_answer_maps_back_to_term(self):
+        """澄清闭环: 患者选择候选后记录为可溯源症状,不再丢失。"""
+        eng = make_engine(encounter_id="clar_enc")
+        res = eng.step("咳了三天,心口有点痛")
+        assert any(a["type"] == "clarify" for a in res.actions)
+        eng.step("是胸部这边不舒服")
+        assert any(s.concept_id == "胸部" for s in eng.state.symptoms)
+
+    def test_confusion_drug_double_confirm(self):
+        """近音药名双确认: 命中混淆对追加 confirm 动作,同药不重复确认。"""
+        eng = make_engine(encounter_id="conf_enc")
+        res = eng.step("最近在吃阿糖腺苷")
+        confirm = next(a for a in res.actions if a["type"] == "confirm")
+        assert confirm["term"] == "阿糖腺苷"
+        assert "阿糖胞苷" in confirm["alternatives"]
+        res2 = eng.step("对,就是阿糖腺苷")
+        assert not any(a["type"] == "confirm" for a in res2.actions)
+
+    def test_numeric_readback(self):
+        """数字回读: 数值型回答追加 readback 确认,不阻断流程。"""
+        eng = make_engine(encounter_id="rb_enc")
+        eng.step("咳嗽两天")
+        res = eng.step("38.5度,昨天开始的")
+        rb = next(a for a in res.actions if a["type"] == "readback")
+        assert "38.5" in rb["values"]
+        assert any(a["type"] == "question" for a in res.actions)
+
+    def test_low_confidence_denial_cannot_exclude(self):
+        """accept_uncertain(0.65-0.85): 低置信否认不得排除危重鉴别。"""
+        eng = make_engine(encounter_id="lc_enc",
+                          skill_name="oncology_bone_metastasis")
+        eng.step("腰背痛两周了")
+        eng.step("没有麻", asr_confidence=0.7)  # 低置信否认
+        item = eng.state.differential.must_not_miss[0]
+        assert "saddle_anesthesia" in item.discriminators_pending
+        assert item.status == "not_excluded"
 
 
 class TestAnswerPolarity:

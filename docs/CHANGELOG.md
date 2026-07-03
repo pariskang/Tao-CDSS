@@ -1,5 +1,37 @@
 # CHANGELOG
 
+## 2026-07-03 (顶级 CDSS 设计理念补全轮: 闭环/最小权限/门禁)
+- 通知闭环: E0/E1 硬升级追加 notify_human 动作并写审计,话术"已通知
+  分诊台"不再只说不做。
+- 澄清闭环: 患者对消歧问句的回答映射回被澄清词(clarify_resolved 事件
+  + 可溯源症状),不再澄清后丢失。
+- M-VSL 全接线: 近音药名双确认(ConfusionGuard,每药一次)、数字回读
+  (numeric_readback)挂入引擎主循环;低置信否认(<0.85)不得排除
+  危重鉴别(accept_uncertain 语义落地)。
+- 三级降级修复: L1 以 mode=extract_only 受限调用 LLM,失败计数继续,
+  L2 自动可达(此前是死档);L2 纯规则,LLM 完全旁路。
+- 剂量回填闭环: hermes_compose.dose_fill 由 drug_safety 结构化数据
+  渲染剂量建议并计算 filled_spans,"区间内合法回填"不再是死代码;
+  未知药物显式声明无数据,绝不猜测。
+- Broker 最小权限: 未注册白名单的 skill 默认拒绝;register_skill 从
+  skill 包 tools.allow 自动装配。
+- 评测门禁: skill metrics.yaml 硬指标由 replay 强制执行(recall/
+  turns_p95/闭环要求),未执行项如实declare;红队新增 LLM 通道对抗
+  用例(对抗性 Stub 模拟模型被攻破,断言网关剂量出站与患者 scope
+  仍拦得住),"注入率=0"不再是同义反复。
+- Shanghan LLM 多评审真实接线: llm_review 适配器把 LLMGateway 评审
+  注入 extra_reviewers,HERMES_LLM_MODEL 配置后自动生效;故障降级
+  warn,ReleaseGate 硬拒绝不放宽(硬规则7)。
+- MCP 角色上限: HERMES_MCP_ROLE_CEILING 钉住 stdio 进程角色天花板,
+  患者侧终端自报 doctor 也只能拿到脱敏输出;shanghan_match 在上限
+  低于 doctor 时直接拒绝。
+- eventstore: 读加锁(与写对称)、encounter 索引、all_events 全量
+  回放 API。
+- 价值驱动选问: slots.yaml 可选 lr_table 激活信息增益分支(似然比
+  为临床数值,示例注释,PENDING 医师审定);加载期校验槽位存在。
+- 测试 533 项全绿(新增 20);红队 10 用例注入率 0/泄漏 0;双 skill
+  回放 metrics 门禁全过;安全三模块覆盖率 100%。
+
 ## 2026-07-02 (全项目审核 + 性能/健壮性修复轮)
 - LLM 网关性能包: 完整 JSON Schema 随 user 消息下发(替代仅类名)、
   raw_decode JSON 抽取(容忍围栏/多对象)、修复重试携带字段级校验错误、

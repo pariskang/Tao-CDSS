@@ -29,6 +29,9 @@ class Skill:
     red_flag_rules: list[dict] = field(default_factory=list)
     must_not_miss: list[MustNotMiss] = field(default_factory=list)
     tools_allow: list[str] = field(default_factory=list)
+    metrics: dict = field(default_factory=dict)  # 验收指标(评测门禁消费)
+    #: (slot, condition) → 似然比,供信息增益选问;临床数值 PENDING 医师审定
+    lr_table: dict = field(default_factory=dict)
 
     @property
     def eval_cases_path(self) -> Path:
@@ -89,6 +92,23 @@ def load_skill(name: str, root: Path | None = None) -> Skill:
             if line.strip() and not line.strip().startswith("#")
         ]
 
+    metrics: dict = {}
+    metrics_path = base / "metrics.yaml"
+    if metrics_path.exists():
+        metrics = yaml.safe_load(
+            metrics_path.read_text(encoding="utf-8")
+        ) or {}
+
+    # 似然比表(可选): slots.yaml 顶层 lr_table 条目
+    # [{slot, condition, lr}],激活价值驱动选问的信息增益分支
+    lr_table: dict = {}
+    for entry in slots_data.get("lr_table", []):
+        if entry["slot"] not in slot_names:
+            raise ValueError(
+                f"skill {name}: lr_table 引用未定义槽位 {entry['slot']}"
+            )
+        lr_table[(entry["slot"], entry["condition"])] = float(entry["lr"])
+
     return Skill(
         name=name,
         path=base,
@@ -96,4 +116,6 @@ def load_skill(name: str, root: Path | None = None) -> Skill:
         red_flag_rules=red_flag_rules,
         must_not_miss=mnm,
         tools_allow=tools_allow,
+        metrics=metrics,
+        lr_table=lr_table,
     )

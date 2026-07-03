@@ -6,9 +6,13 @@ from functools import lru_cache
 
 @lru_cache(maxsize=1)
 def default_result():
+    from shanghan.llm_review import default_llm_reviewers
     from shanghan.pipeline import ShanghanPipeline
 
-    return ShanghanPipeline().run()
+    # HERMES_LLM_MODEL 已配置 → LLM 多评审自动接线;未配置纯确定性
+    return ShanghanPipeline(
+        extra_reviewers=default_llm_reviewers() or None
+    ).run()
 
 
 @lru_cache(maxsize=1)

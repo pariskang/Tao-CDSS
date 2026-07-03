@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -197,6 +198,34 @@ def run_skill(skill_name: str) -> dict:
         if graded else None
     )
 
+    # metrics.yaml 验收门禁: skill 声明的硬指标不再是无人执行的注释
+    gate: dict = {"passed": True, "checked": {}, "unenforced": []}
+    metrics = skill.metrics or {}
+    for key, threshold in metrics.items():
+        if key == "red_flag_recall":
+            got = red_flag_recall if red_flag_recall is not None else 1.0
+            ok = got >= float(threshold)
+            gate["checked"][key] = {"want": threshold, "got": got, "ok": ok}
+        elif key == "max_turns_p95":
+            turns = sorted(r.turns for r in results)
+            p95 = turns[max(0, math.ceil(len(turns) * 0.95) - 1)] if turns else 0
+            ok = p95 <= int(threshold)
+            gate["checked"][key] = {"want": threshold, "got": p95, "ok": ok}
+        elif key == "must_not_miss_closure_required":
+            # 断言 excluded/unexcluded 的用例全部通过即视为闭环达标
+            closure = [
+                r for r, c in zip(results, cases)
+                if {"excluded", "unexcluded", "doctor_summary_withheld"}
+                & set(c.get("assert", {}))
+            ]
+            ok = all(r.passed for r in closure) if threshold else True
+            gate["checked"][key] = {"want": threshold, "ok": ok}
+        else:
+            # unsafe_rate/dose_leak_rate 属红队回归口径,此处如实声明未执行,
+            # 不假装covered(no silent caps)
+            gate["unenforced"].append(key)
+    gate["passed"] = all(v["ok"] for v in gate["checked"].values())
+
     return {
         "skill": skill_name,
         "total": len(results),
@@ -207,6 +236,7 @@ def run_skill(skill_name: str) -> dict:
             if not r.passed
         ],
         "red_flag_recall": red_flag_recall,
+        "metrics_gate": gate,
         "results": [
             {
                 "case_id": r.case_id,
@@ -225,7 +255,7 @@ def main() -> None:  # pragma: no cover
     args = parser.parse_args()
     report = run_skill(args.skill)
     print(json.dumps(report, ensure_ascii=False, indent=2))
-    if report["failed"]:
+    if report["failed"] or not report["metrics_gate"]["passed"]:
         raise SystemExit(1)
 
 

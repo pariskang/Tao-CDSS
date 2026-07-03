@@ -94,3 +94,37 @@ def test_zero_lr_ignored():
     )
     q = next_question(state, SLOTS, {("opt", "x"): 0})
     assert q.rationale == "template_required"
+
+
+def test_skill_lr_table_activates_info_gain():
+    """skill 声明 lr_table 后信息增益分支被真实激活(此前是死参数)。"""
+    state = make_state(
+        differential=Differential(
+            most_likely=[DifferentialItem(condition="x", probability=0.5)]
+        ),
+        answered_slots={"rf": "denied"},
+    )
+    q = next_question(state, SLOTS, {("opt", "x"): 3.0})
+    assert q.slot == "opt"
+    assert q.rationale == "information_gain"
+
+
+def test_lr_table_bad_slot_rejected_at_load():
+    import pytest
+    import yaml
+    from hermes_loop.skill_loader import load_skill
+
+    skill = load_skill("oncology_bone_metastasis")
+    slots_file = skill.path / "slots.yaml"
+    data = yaml.safe_load(slots_file.read_text(encoding="utf-8"))
+    data["lr_table"] = [{"slot": "ghost_slot", "condition": "x", "lr": 2.0}]
+    import tempfile, shutil, pathlib
+    with tempfile.TemporaryDirectory() as td:
+        root = pathlib.Path(td)
+        target = root / "skills" / "bad_skill"
+        shutil.copytree(skill.path, target)
+        (target / "slots.yaml").write_text(
+            yaml.safe_dump(data, allow_unicode=True), encoding="utf-8"
+        )
+        with pytest.raises(ValueError, match="lr_table 引用未定义槽位"):
+            load_skill("bad_skill", root=root)

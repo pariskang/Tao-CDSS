@@ -72,6 +72,10 @@ class Broker:
         self._idem_cache: dict[str, dict] = {}
         self._counts: dict[str, int] = defaultdict(int)
 
+    def register_skill(self, skill) -> None:
+        """从 skill 包的 tools.allow 装配白名单(最小权限自动接线)。"""
+        self._allowlists[skill.name] = set(skill.tools_allow)
+
     def call(
         self,
         env: ToolCallEnvelope,
@@ -143,8 +147,14 @@ class Broker:
             raise BrokerError(403, f"缺少患者同意项: {required}")
 
     def _allowlist(self, env: ToolCallEnvelope) -> None:
+        # 最小权限: 未注册白名单的 skill 默认拒绝(而非默认放行)。
+        # skill 上线必须显式声明 tools.allow 并经 register_skill 装配。
         allowed = self._allowlists.get(env.skill)
-        if allowed is not None and env.tool not in allowed:
+        if allowed is None:
+            raise BrokerError(
+                403, f"skill {env.skill} 未注册工具白名单(默认拒绝)"
+            )
+        if env.tool not in allowed:
             raise BrokerError(403, f"工具 {env.tool} 不在 skill {env.skill} 白名单")
 
     def _schema(self, env: ToolCallEnvelope) -> None:

@@ -21,6 +21,11 @@ class ConfusionGuard:
     def __init__(self, pairs: dict[str, list[str]]):
         self._pairs = pairs
 
+    @property
+    def terms(self) -> tuple[str, ...]:
+        """混淆对照表中的全部药名(供调用方扫描文本命中,长词优先)。"""
+        return tuple(sorted(self._pairs, key=len, reverse=True))
+
     @classmethod
     def from_yaml(cls, path: str | Path | None = None) -> "ConfusionGuard":
         p = Path(path) if path else repo_root() / "knowledge" / "drug_confusion_pairs.yaml"

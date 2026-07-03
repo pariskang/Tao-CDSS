@@ -136,3 +136,38 @@ class TestDrugSafety:
 
     def test_unknown_drug_returns_none_never_guesses(self):
         assert get_dose_range("unknown_drug")["dose"] is None
+
+
+class TestShanghanMcpRoleCeiling:
+    """stdio 形态客户端自报角色不可信,HERMES_MCP_ROLE_CEILING 钉角色上限。"""
+
+    def test_ceiling_caps_selfreported_doctor(self, monkeypatch):
+        from mcp_servers.shanghan_mcp.server import _cap_role
+
+        monkeypatch.setenv("HERMES_MCP_ROLE_CEILING", "patient")
+        assert _cap_role("doctor") == "patient"
+        assert _cap_role("researcher") == "patient"
+        assert _cap_role("patient") == "patient"
+
+    def test_default_ceiling_is_doctor(self, monkeypatch):
+        from mcp_servers.shanghan_mcp.server import _cap_role
+
+        monkeypatch.delenv("HERMES_MCP_ROLE_CEILING", raising=False)
+        assert _cap_role("doctor") == "doctor"
+        assert _cap_role("patient") == "patient"
+
+    def test_invalid_values_collapse_to_least_privilege(self, monkeypatch):
+        from mcp_servers.shanghan_mcp.server import _cap_role
+
+        monkeypatch.setenv("HERMES_MCP_ROLE_CEILING", "admin")
+        assert _cap_role("doctor") == "patient"
+        monkeypatch.setenv("HERMES_MCP_ROLE_CEILING", "doctor")
+        assert _cap_role("hacker") == "patient"
+
+    def test_match_refused_below_doctor_ceiling(self, monkeypatch):
+        from mcp_servers.shanghan_mcp.server import tool_shanghan_match
+
+        monkeypatch.setenv("HERMES_MCP_ROLE_CEILING", "patient")
+        out = tool_shanghan_match(["恶寒", "无汗"])
+        assert out.get("error") == "role_ceiling"
+        assert "matches" not in out

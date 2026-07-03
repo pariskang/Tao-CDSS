@@ -15,16 +15,16 @@
 | 审计哈希链(L8/L11) | `packages/audit-chain` | ✅ append-only + 篡改检测 |
 | 事件溯源 | `packages/eventstore` | ✅ 断线恢复/全量回放 |
 | HermesGuard(L8) | `services/hermes-guard` | ✅ 剂量出站/分级/心理旁路/注入/溯源;证据校验为 bigram 启发式(二期换专用 NLI 小模型) |
-| HermesLoop(L3) | `services/hermes-loop` | ✅ SCOPE 状态机 + 价值驱动选问 + 三级降级 |
-| HermesBroker(L5) | `services/hermes-broker` | ✅ 十段治理管线(顺序由测试锁定) |
-| HermesVoice/M-VSL(L1) | `services/hermes-voice` | ✅ Stub ASR + hedge/混淆/回读/方言消歧(真 ASR 留接口) |
-| HermesCompose | `services/hermes-compose` | ✅ 患者/医生双通道,出站最后一级挂安全扫描 |
-| MCP servers | `mcp_servers/` | ✅ calculator/terminology/triage/drug_safety |
-| Skills(L4) | `skills/` | ✅ emergency_triage + oncology_bone_metastasis 七件套 |
-| 评测(L9) | `evals/` | ✅ SP 回放 + 红队回归 |
+| HermesLoop(L3) | `services/hermes-loop` | ✅ SCOPE 状态机 + 价值驱动选问(lr_table 可选) + 三级降级(L2 自动可达) + E0/E1 通知闭环 + 澄清/药名/数字确认闭环 |
+| HermesBroker(L5) | `services/hermes-broker` | ✅ 十段治理管线(顺序由测试锁定);白名单默认拒绝,tools.allow 自动装配 |
+| HermesVoice/M-VSL(L1) | `services/hermes-voice` | ✅ Stub ASR + hedge/混淆双确认/数字回读/方言消歧,全部接线(真 ASR 留接口) |
+| HermesCompose | `services/hermes-compose` | ✅ 患者/医生双通道,出站最后一级挂安全扫描;剂量回填闭环(drug_safety→filled_spans) |
+| MCP servers | `mcp_servers/` | ✅ calculator/terminology/triage/drug_safety;角色上限 HERMES_MCP_ROLE_CEILING |
+| Skills(L4) | `skills/` | ✅ emergency_triage + oncology_bone_metastasis 七件套;metrics.yaml 为评测强制门禁 |
+| 评测(L9) | `evals/` | ✅ SP 回放(metrics 门禁) + 红队回归(含 LLM 通道对抗) |
 | LLM 后端 | `packages/llm-backend` | ✅ litellm 多模型 + LLMGateway 治理(剂量出站/审计/成本/重试修复) |
 | HermesAgents(L6) | `services/hermes-agents` | ✅ Manager + bounded specialists + 复杂度路由 + 多评审共识;LLM 失败确定性兜底 |
-| Shanghan-Hermes | `packages/shanghan` | ✅ 条文分支解析 → branch 级证据 → 对抗审核 → ReleaseGate 硬拒绝 → 方证/六经/鉴别归纳 → SkillRAG 全 handler → 患者递归脱敏 |
+| Shanghan-Hermes | `packages/shanghan` | ✅ 条文分支解析 → branch 级证据 → 对抗审核(可选 LLM 多评审,HERMES_LLM_MODEL 配置后自动接线) → ReleaseGate 硬拒绝 → 方证/六经/鉴别归纳 → SkillRAG 全 handler → 患者递归脱敏 |
 | 编码智能体接入 | `.mcp.json` / `AGENTS.md` / `integrations/` | ✅ Claude Code / Codex / OpenClaw(MCP stdio server + CLI) |
 
 ## 快速开始
