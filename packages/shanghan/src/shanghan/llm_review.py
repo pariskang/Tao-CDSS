@@ -25,6 +25,11 @@ def make_llm_reviewers(
 ) -> list[Callable[[InitialRule], ReviewVerdict]]:
     from hermes_llm.structured import SCHEMAS
 
+    # 一致性门控采样数(semantic entropy 简化,Nature 2024):
+    # k>1 时同一规则评审 k 次,众数达 quorum 才采信;默认 1(零成本增加)
+    k = int(os.environ.get("HERMES_LLM_CONSISTENCY_K", "1"))
+    quorum = max(2, k // 2 + 1) if k > 1 else 1
+
     def build(role: str) -> Callable[[InitialRule], ReviewVerdict]:
         def reviewer(rule: InitialRule) -> ReviewVerdict:
             data = {
@@ -37,15 +42,16 @@ def make_llm_reviewers(
                 "conclusion_span": rule.conclusion_span,
             }
             try:
-                out = gateway.structured_call(
-                    role, data, SCHEMAS["ReviewVerdictModel"]
+                out, _report = gateway.structured_call_consistent(
+                    role, data, SCHEMAS["ReviewVerdictModel"],
+                    k=k, quorum=quorum,
                 )
                 verdict = out.verdict if out.verdict in _VALID else "warn"
                 return ReviewVerdict(
                     verdict, [f"llm:{role}:{p}" for p in out.problems]
                 )
             except Exception as e:
-                # 评审故障降级 warn: 不阻断确定性基线,也不视为通过
+                # 评审故障/一致性不足降级 warn: 不阻断确定性基线,也不放水
                 return ReviewVerdict(
                     "warn", [f"llm_reviewer_error:{role}:{type(e).__name__}"]
                 )

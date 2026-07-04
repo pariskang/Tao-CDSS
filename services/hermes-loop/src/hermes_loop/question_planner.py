@@ -30,15 +30,80 @@ class Question:
     rationale: str
 
 
-def _info_gain(slot: Slot, state: ClinicalState, lr_table: dict) -> float:
-    """score(s) = Σ_d |log(LR_{s,d})| · P(d),d 取 differential 中条目。"""
-    score = 0.0
+# ---------------------------------------------------------------- 贝叶斯选问
+# 理论: 序贯诊断中问题的价值 = 预期后验熵减(期望信息增益/互信息),
+# AMIE(Nature 2025)与 MAI-DxO(2025)均以此类准则驱动问诊/检验选择。
+# 两点模型: 已知 LR+ = L 且近似 LR- = 1/L 时,唯一相容的条件概率为
+#   P(yes|d) = L/(1+L),  P(yes|~d) = 1/(1+L)
+# (由 LR+ = P(yes|d)/P(yes|~d) 与 LR- = P(no|d)/P(no|~d) 联立解出),
+# 因此 EIG 有解析闭式,纯确定性可测试。LR 数值属临床数据,PENDING 医师审定。
+
+
+def _binary_entropy(p: float) -> float:
+    if p <= 0.0 or p >= 1.0:
+        return 0.0
+    return -(p * math.log2(p) + (1 - p) * math.log2(1 - p))
+
+
+def _posterior_yes(p: float, lr: float) -> float:
+    """观察到 yes 后的后验: p·L / (p·L + (1-p))。"""
+    return p * lr / (p * lr + (1 - p))
+
+
+def _posterior_no(p: float, lr: float) -> float:
+    """观察到 no 后的后验(两点模型 LR- = 1/L): p / (p + (1-p)·L)。"""
+    return p / (p + (1 - p) * lr)
+
+
+def posterior_probabilities(
+    state: ClinicalState, lr_table: dict
+) -> dict[str, float]:
+    """从 skill 先验出发,按已答槽位折算各鉴别条目的后验概率。
+
+    纯函数(每轮由 answered_slots 全量重算),不写 clinical_state——
+    概率非溯源字段,保持契约不变(硬规则5)。
+    present → yes 更新;denied → no 更新;unknown/probably_denied 不更新。
+    """
     items = state.differential.must_not_miss + state.differential.most_likely
-    for item in items:
-        lr = lr_table.get((slot.name, item.condition))
-        if lr and lr > 0:
-            score += abs(math.log(lr)) * item.probability
-    return score
+    post = {i.condition: i.probability for i in items}
+    for (slot_name, condition), lr in lr_table.items():
+        if condition not in post or not lr or lr <= 0 or lr == 1.0:
+            continue
+        answer = state.answered_slots.get(slot_name)
+        if answer == "present":
+            post[condition] = _posterior_yes(post[condition], lr)
+        elif answer == "denied":
+            post[condition] = _posterior_no(post[condition], lr)
+    return post
+
+
+def _expected_information_gain(
+    slot: Slot, posteriors: dict[str, float], lr_table: dict
+) -> float:
+    """EIG(s) = Σ_d I(D_d; A_s) = Σ_d [H(p_d) - E_answer H(p_d|answer)]。
+
+    互信息非负;LR=1 时严格为 0(无信息问题不加分);LR 越极端增益越大。
+    """
+    gain = 0.0
+    for condition, p in posteriors.items():
+        lr = lr_table.get((slot.name, condition))
+        if not lr or lr <= 0 or lr == 1.0 or p <= 0.0 or p >= 1.0:
+            continue
+        p_yes_marginal = (p * lr + (1 - p)) / (1 + lr)
+        h_prior = _binary_entropy(p)
+        h_post = (
+            p_yes_marginal * _binary_entropy(_posterior_yes(p, lr))
+            + (1 - p_yes_marginal) * _binary_entropy(_posterior_no(p, lr))
+        )
+        gain += max(0.0, h_prior - h_post)
+    return gain
+
+
+def _info_gain(slot: Slot, state: ClinicalState, lr_table: dict) -> float:
+    """价值驱动选问分数 = 预期信息增益(替换旧 Σ|logLR|·P(d) 启发式)。"""
+    return _expected_information_gain(
+        slot, posterior_probabilities(state, lr_table), lr_table
+    )
 
 
 def next_question(

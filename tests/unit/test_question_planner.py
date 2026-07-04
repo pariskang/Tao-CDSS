@@ -128,3 +128,69 @@ def test_lr_table_bad_slot_rejected_at_load():
         )
         with pytest.raises(ValueError, match="lr_table 引用未定义槽位"):
             load_skill("bad_skill", root=root)
+
+
+class TestBayesianEIG:
+    """预期信息增益选问(两点模型互信息,AMIE/MAI-DxO 准则的确定性简化)。"""
+
+    def test_uninformative_lr_gains_zero(self):
+        from hermes_loop.question_planner import _expected_information_gain
+        s = Slot(name="opt", question="q")
+        assert _expected_information_gain(s, {"x": 0.5}, {("opt", "x"): 1.0}) == 0.0
+
+    def test_gain_monotone_in_lr(self):
+        from hermes_loop.question_planner import _expected_information_gain
+        s = Slot(name="opt", question="q")
+        g = [_expected_information_gain(s, {"x": 0.3}, {("opt", "x"): lr})
+             for lr in (1.5, 3.0, 10.0)]
+        assert g[0] < g[1] < g[2]
+        assert all(x > 0 for x in g)
+
+    def test_posterior_updates_from_answers(self):
+        from hermes_loop.question_planner import posterior_probabilities
+        state = make_state(
+            differential=Differential(
+                most_likely=[DifferentialItem(condition="x", probability=0.2)]
+            ),
+            answered_slots={"opt": "present"},
+        )
+        post = posterior_probabilities(state, {("opt", "x"): 4.0})
+        # p=0.2, L=4: 后验 = 0.2*4/(0.2*4+0.8) = 0.5
+        assert abs(post["x"] - 0.5) < 1e-9
+        state2 = make_state(
+            differential=Differential(
+                most_likely=[DifferentialItem(condition="x", probability=0.2)]
+            ),
+            answered_slots={"opt": "denied"},
+        )
+        post2 = posterior_probabilities(state2, {("opt", "x"): 4.0})
+        # denied: p/(p+(1-p)L) = 0.2/(0.2+3.2) ≈ 0.0588
+        assert post2["x"] < 0.2
+
+    def test_unknown_answer_does_not_update(self):
+        from hermes_loop.question_planner import posterior_probabilities
+        state = make_state(
+            differential=Differential(
+                most_likely=[DifferentialItem(condition="x", probability=0.2)]
+            ),
+            answered_slots={"opt": "unknown"},
+        )
+        assert posterior_probabilities(state, {("opt", "x"): 4.0})["x"] == 0.2
+
+    def test_answered_slot_gain_reflects_posterior(self):
+        """答完高 LR 判别问题后,同一条件的剩余问题增益下降(不确定性已削减)。"""
+        from hermes_loop.question_planner import _info_gain
+        s2 = Slot(name="opt2", question="q2")
+        lr = {("opt", "x"): 9.0, ("opt2", "x"): 3.0}
+        before = make_state(
+            differential=Differential(
+                most_likely=[DifferentialItem(condition="x", probability=0.5)]
+            ),
+        )
+        after = make_state(
+            differential=Differential(
+                most_likely=[DifferentialItem(condition="x", probability=0.5)]
+            ),
+            answered_slots={"opt": "denied"},
+        )
+        assert _info_gain(s2, after, lr) < _info_gain(s2, before, lr)

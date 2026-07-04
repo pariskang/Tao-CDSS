@@ -15,6 +15,7 @@ from shanghan.matcher import FormulaMatcher
 from shanghan.paper import PaperDraftGenerator
 from shanghan.patient_safety import governed
 from shanghan.pipeline import PipelineResult
+from shanghan.retrieval import BM25Index
 
 HANDLERS = (
     "match", "formula", "mistreatment", "contraindication", "therapy",
@@ -34,6 +35,10 @@ class SkillRAG:
         self._clauses = load_corpus()
         self._clause_index = {c.clause_id: c for c in self._clauses}
         self._formula_names = sorted(result.patterns, key=len, reverse=True)
+        self._bm25 = BM25Index({c.clause_id: c.text for c in self._clauses})
+        from shanghan.conformal import calibrate_from_patterns
+
+        self._conformal = calibrate_from_patterns(result.patterns)
 
     # ------------------------------------------------------------------ route
     def route(self, question: str) -> str:
@@ -82,8 +87,19 @@ class SkillRAG:
     def _h_match(self, question: str) -> dict:
         symptoms, pulses = self._parse_findings(question)
         matches = self._matcher.match(symptoms, pulses)
+        decision = self._conformal.decide({m.formula: m.score for m in matches})
         return {
             "answer": "方证匹配候选(仅供执业医师参考,需四诊合参)",
+            # split-conformal 选择性预测: 置信不足即弃权转医师,
+            # 覆盖保证基于 engineer_seed 自校准分布(PENDING 医师病例集)
+            "conformal": {
+                "abstain": decision.abstain,
+                "prediction_set": decision.prediction_set,
+                "coverage_target": decision.coverage_target,
+                "calibration_n": decision.calibration_n,
+                "reason": decision.reason,
+                "review": "PENDING_PHYSICIAN_REVIEW",
+            },
             "parsed": {"symptoms": symptoms, "pulses": pulses},
             "matched_formula_patterns": [
                 {
@@ -194,17 +210,11 @@ class SkillRAG:
             no = int(m.group(1))
             hits = [c for c in self._clauses if c.no == no]
         else:
-            # 无条号时按问句中的实体词/方剂名检索并按命中数排序,
-            # 单字符包含匹配(问句含"太""病"即命中)近乎随机,已废弃
+            # 无条号时: 实体词锚定 + BM25 混合排序(单字符包含匹配已废弃)
             symptoms, pulses = self._parse_findings(question)
-            terms = set(symptoms + pulses)
-            terms.update(f for f in self._formula_names if f in question)
-            scored = [
-                (sum(1 for t in terms if t in c.text), c)
-                for c in self._clauses
-            ]
-            hits = [c for score, c in
-                    sorted(scored, key=lambda x: -x[0]) if score > 0]
+            terms = list(symptoms + pulses)
+            terms.extend(f for f in self._formula_names if f in question)
+            hits = self._rank_clauses(question, terms)
         return {
             "answer": "条文检索结果" if hits else
                       "未检索到相关条文(问句中未识别出条号或已收录的证候/方剂名)",
@@ -264,11 +274,7 @@ class SkillRAG:
     def _h_generic(self, question: str) -> dict:
         symptoms, pulses = self._parse_findings(question)
         terms = symptoms + pulses
-        # 按命中词数降序,多词命中的条文优先于语料序
-        scored = [
-            (sum(1 for t in terms if t in c.text), c) for c in self._clauses
-        ] if terms else []
-        hits = [c for score, c in sorted(scored, key=lambda x: -x[0]) if score > 0]
+        hits = self._rank_clauses(question, terms)
         return {
             "answer": "原文证据检索(generic)",
             "evidence": [
@@ -277,6 +283,19 @@ class SkillRAG:
         }
 
     # ------------------------------------------------------------------ helpers
+    def _rank_clauses(self, question: str, terms: list[str]) -> list:
+        """混合排序: 实体词精确命中为主锚(×10),BM25(字符bigram)提供
+        次级排序与无实体词时的兜底召回。确定性: 同分按 clause_id。"""
+        bm25 = dict(self._bm25.search(question, top_k=len(self._clauses)))
+        scored = []
+        for c in self._clauses:
+            anchor = sum(1 for t in set(terms) if t in c.text) if terms else 0
+            score = anchor * 10.0 + bm25.get(c.clause_id, 0.0)
+            if score > 0:
+                scored.append((score, c))
+        scored.sort(key=lambda x: (-x[0], x[1].clause_id))
+        return [c for _, c in scored]
+
     def _evidence_for(self, clause_ids: list[str]) -> list[dict]:
         return [
             {"clause_id": cid, "text": self._clause_index[cid].text}

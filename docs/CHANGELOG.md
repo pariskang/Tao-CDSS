@@ -1,5 +1,33 @@
 # CHANGELOG
 
+## 2026-07-04 (科研升级轮: 文献支撑的算法与安全机制)
+- BM25 条文检索(Okapi BM25 + 中文字符 bigram,零依赖): SkillRAG
+  generic/clause 检索改为实体词锚定×10 + BM25 混合排序;无实体词问句
+  ("但欲寐是怎么回事")从返回空升级为 BM25 兜底召回。
+- 贝叶斯序贯选问(AMIE/Nature 2025、MAI-DxO 2025 准则的确定性简化):
+  lr_table 启发式 Σ|logLR|·P(d) 升级为两点模型下的解析互信息
+  (预期熵减);posterior_probabilities 由 answered_slots 全量重算,
+  纯函数不写 clinical_state(硬规则5 不受影响);LR=1 问题增益严格为 0,
+  已答判别项后同条件剩余问题增益随后验收敛下降。
+- Split-conformal 方证匹配弃权(Vovk;Angelopoulos & Bates 2023):
+  shanghan.conformal 提供分布无关覆盖保证的预测集;校准集不足
+  (n < (1-α)/α)时永远弃权转医师(fail-safe);预测集为空/过大同样
+  弃权;当前用方证 pattern 留一自校准(engineer_seed,PENDING 医师
+  病例集);_h_match 输出附 conformal 决策。
+- LLM k 采样一致性门控(semantic entropy 的结构化简化,Farquhar et al.
+  Nature 2024): structured_call_consistent 按 canonical JSON 等价类
+  计票,众数不达 quorum 即拒绝(调用方走确定性兜底);结果写审计
+  llm_consistency;shanghan LLM 评审经 HERMES_LLM_CONSISTENCY_K 启用,
+  默认 k=1 零成本。
+- Spotlighting 数据定界防注入(Hines et al. 2024): 网关 user 段以
+  «HERMES_DATA_START/END» 哨兵包裹不可信数据,数据内哨兵字符先中和
+  (无法伪造边界);入站 injection_scanner 检测命中即脱敏并审计
+  injection_detected;system 守则声明边界内指令一律视为数据。
+- 校准报告不确定性量化: precision_strict 附 95% 百分位 bootstrap
+  置信区间(固定种子确定性,n<5 如实返回 None);当前 39 条:
+  precision 0.846,CI95 [0.718, 0.949]。
+- 测试 566 项全绿(新增 33);安全三模块覆盖率 100%。
+
 ## 2026-07-03 (顶级 CDSS 设计理念补全轮: 闭环/最小权限/门禁)
 - 通知闭环: E0/E1 硬升级追加 notify_human 动作并写审计,话术"已通知
   分诊台"不再只说不做。
