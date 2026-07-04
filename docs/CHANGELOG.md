@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## 2026-07-04 (Colab 全功能语音演示端)
+- 新增 apps/colab_demo: 分层设计——session.py 纯会话逻辑(零 UI 依赖,
+  进 CI,9 项测试);voice.py 懒加载 faster-whisper(GPU float16,失败
+  回退 CPU)+ edge-tts;app.py Gradio 四页签 UI(患者语音多轮预问诊/
+  医生工作台/伤寒问答/评测面板)+ pyngrok 公网链接(失败回退 gradio
+  share)。ASR 段级 avg_logprob 映射为 asr_confidence 喂引擎置信门控。
+- 新增 notebooks/hermes_colab_demo.ipynb: A100/A6000 一键启动,含 GPU
+  检查/依赖安装/全量自检/LLM 与 ngrok 可选配置/语音预热/体验路径指引。
+- pyproject 新增 [demo] 可选组(gradio/faster-whisper/edge-tts/pyngrok),
+  核心包与安全路径禁止 import apps/;患者可见文本与 TTS 只朗读引擎
+  治理后的动作文本。
+- 测试 609 项全绿(新增 9)。
+
 ## 2026-07-04 (科研升级第二轮: 六路文献调研驱动的算法修正与评测护栏)
 - 新增 docs/research-roadmap.md: 全部工程决策的文献依据、已否决方案
   与待临床数据解锁项(AMIE/Nature 2025、MAI-DxO、semantic entropy/

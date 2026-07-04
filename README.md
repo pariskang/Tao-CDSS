@@ -32,6 +32,17 @@
 
 ## 快速开始
 
+### ☁️ Colab 一键演示(语音问诊全功能 UI)
+
+打开 [`notebooks/hermes_colab_demo.ipynb`](notebooks/hermes_colab_demo.ipynb)
+(建议 A100 / RTX A6000 运行时)顺序执行即可:
+Gradio 前端集成 🎤 语音多轮预问诊(faster-whisper large-v3 GPU 转写 +
+edge-tts 语音回复)、👨‍⚕️ 医生工作台(SOAP/裁决/剂量回填/摘要放行)、
+📜 伤寒论问答、🛡️ 评测面板;自动生成 ngrok 公网链接供手机/外网测试。
+本地运行: `pip install -e ".[demo,llm,dev]" && python -m apps.colab_demo.app`。
+
+### 💻 本地开发
+
 ```bash
 uv venv .venv && uv pip install --python .venv/bin/python \
   pydantic pyyaml litellm pytest pytest-asyncio pytest-cov
