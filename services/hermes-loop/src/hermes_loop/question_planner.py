@@ -21,6 +21,16 @@ class Slot:
     sensitive: bool = False
     reason: str = ""
     keywords: tuple[str, ...] = ()
+    #: 提问负担(患者时间/认知成本相对值,MAI-DxO Dr. Stewardship 语义)
+    cost: float = 1.0
+
+
+#: 信息增益停问阈值(bits): 最优候选低于此值时选问让位给模板必填,
+#: 避免边际价值趋零的追问(ACTMED/MediQ 的 VoI 停止准则)
+EIG_EPS = 0.01
+#: 置信停问阈值: 后验最高鉴别概率达到 τ 后信息增益分支不再选问
+#: (Calibrate-Then-Act 承诺规则);红旗与 must_not_miss 分支不受影响
+CONFIDENCE_TAU = 0.95
 
 
 @dataclass(frozen=True)
@@ -77,26 +87,69 @@ def posterior_probabilities(
     return post
 
 
+def _categorical_entropy(dist: dict[str, float]) -> float:
+    return -sum(p * math.log2(p) for p in dist.values() if p > 0.0)
+
+
+def _categorical_prior(posteriors: dict[str, float]) -> dict[str, float]:
+    """把各鉴别条目的边际概率折算为类别分布(含 other 残差质量)。"""
+    total = sum(posteriors.values())
+    other = max(0.0, 1.0 - total)
+    z = total + other
+    if z <= 0.0:
+        return {}
+    dist = {c: p / z for c, p in posteriors.items() if p > 0.0}
+    if other > 0.0:
+        dist["__other__"] = other / z
+    return dist
+
+
 def _expected_information_gain(
     slot: Slot, posteriors: dict[str, float], lr_table: dict
 ) -> float:
-    """EIG(s) = Σ_d I(D_d; A_s) = Σ_d [H(p_d) - E_answer H(p_d|answer)]。
+    """EIG(s) = I(D; A_s) = H_cat(q) - E_answer[H_cat(q|answer)]。
 
-    互信息非负;LR=1 时严格为 0(无信息问题不加分);LR 越极端增益越大。
+    把鉴别 D 建模为单一类别变量(BED-LLM, arXiv:2508.21184 证明须用联合
+    目标真互信息): 逐条目独立二值 MI 求和会对"弱触多病"的槽位重复计分,
+    系统性高估宽泛问题。无 LR 项的条目与 other 残差取 L=1(P(yes|·)=0.5,
+    无信息);LR 全为 1 时 EIG 严格为 0;互信息非负有界(≤H_cat(q))。
     """
-    gain = 0.0
-    for condition, p in posteriors.items():
+    q = _categorical_prior(posteriors)
+    if len(q) < 2:
+        return 0.0
+
+    def p_yes_given(condition: str) -> float:
         lr = lr_table.get((slot.name, condition))
-        if not lr or lr <= 0 or lr == 1.0 or p <= 0.0 or p >= 1.0:
-            continue
-        p_yes_marginal = (p * lr + (1 - p)) / (1 + lr)
-        h_prior = _binary_entropy(p)
-        h_post = (
-            p_yes_marginal * _binary_entropy(_posterior_yes(p, lr))
-            + (1 - p_yes_marginal) * _binary_entropy(_posterior_no(p, lr))
-        )
-        gain += max(0.0, h_prior - h_post)
-    return gain
+        if not lr or lr <= 0:
+            return 0.5
+        return lr / (1.0 + lr)
+
+    p_yes = sum(q_c * p_yes_given(c) for c, q_c in q.items())
+    if p_yes <= 0.0 or p_yes >= 1.0:
+        return 0.0
+    post_yes = {c: q_c * p_yes_given(c) / p_yes for c, q_c in q.items()}
+    post_no = {
+        c: q_c * (1.0 - p_yes_given(c)) / (1.0 - p_yes) for c, q_c in q.items()
+    }
+    gain = _categorical_entropy(q) - (
+        p_yes * _categorical_entropy(post_yes)
+        + (1.0 - p_yes) * _categorical_entropy(post_no)
+    )
+    return max(0.0, gain)
+
+
+def _answer_balance(slot: Slot, posteriors: dict[str, float],
+                    lr_table: dict) -> float:
+    """|P(yes)-P(no)|: 越接近 0 问题越"平衡切分"假设空间(UoT,
+    arXiv:2402.03271),作为 EIG 近并列时的二级决胜键。"""
+    q = _categorical_prior(posteriors)
+    if not q:
+        return 1.0
+    p_yes = 0.0
+    for c, q_c in q.items():
+        lr = lr_table.get((slot.name, c))
+        p_yes += q_c * (lr / (1.0 + lr) if lr and lr > 0 else 0.5)
+    return abs(2.0 * p_yes - 1.0)
 
 
 def _info_gain(slot: Slot, state: ClinicalState, lr_table: dict) -> float:
@@ -148,11 +201,27 @@ def next_question(
         return pick(disc, "must_not_miss")
 
     if lr_table:
-        scored = [(s, _info_gain(s, state, lr_table)) for s in open_slots]
-        scored = [(s, sc) for s, sc in scored if sc > 0]
-        if scored:
-            slot = max(scored, key=lambda x: x[1])[0]
-            return pick([slot], "information_gain")
+        post = posterior_probabilities(state, lr_table)
+        p_top = max(post.values(), default=0.0)
+        # 置信停问: 鉴别已足够确定时不再为信息增益追问,让位模板必填
+        if p_top < CONFIDENCE_TAU:
+            scored = []
+            for s in open_slots:
+                gain = _expected_information_gain(s, post, lr_table)
+                if gain <= EIG_EPS:
+                    continue
+                # 单位负担信息增益(EIG/cost)为主键;
+                # 平衡切分度(UoT)为二级决胜;priority/name 保证确定性
+                scored.append((
+                    -gain / max(s.cost, 1e-9),
+                    _answer_balance(s, post, lr_table),
+                    s.priority,
+                    s.name,
+                    s,
+                ))
+            if scored:
+                scored.sort(key=lambda x: x[:4])
+                return pick([scored[0][4]], "information_gain")
 
     required = [s for s in open_slots if s.required]
     if required:

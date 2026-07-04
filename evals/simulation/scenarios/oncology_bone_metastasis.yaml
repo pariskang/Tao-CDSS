@@ -1,0 +1,45 @@
+# self-play 仿真场景(engineer_seed): 系统只见 chief_complaint 与 facts 查表,
+# 最终诊断/预期不出现在任何提示中(AMIE 范式: 省略诊断迫使问诊推断)
+# PENDING_PHYSICIAN_REVIEW
+cases:
+  - case_id: sp_onc_benign_full_denial
+    chief_complaint: 腰背痛两周了
+    facts:
+      saddle_anesthesia: 没有麻
+      bowel_bladder_dysfunction: 大小便都正常,没有失禁
+      progressive_leg_weakness: 没有,力气跟原来一样
+      pain_location: 主要是腰这里
+      onset: 两周前开始的
+      night_pain: 晚上还好,能睡着
+      nrs_score: 大概三分吧
+      medication: 在吃止痛药
+      psych_distress: 心情还好
+    must_not_miss_expectation:
+      spinal_cord_compression: excluded
+    expect_terminal: true
+
+  - case_id: sp_onc_positive_saddle
+    chief_complaint: 腰背痛越来越厉害
+    facts:
+      saddle_anesthesia: 会阴那里麻木得厉害
+      bowel_bladder_dysfunction: 大便没有问题
+      progressive_leg_weakness: 腿有点没力气
+      pain_location: 腰和背
+      onset: 一个月前
+      night_pain: 晚上会痛醒
+      nrs_score: 七八分
+      medication: 止痛药吃了不管用
+      psych_distress: 很焦虑
+    must_not_miss_expectation:
+      spinal_cord_compression: not_excluded
+    expect_terminal: true
+
+  - case_id: sp_onc_sparse_facts_unknowns
+    chief_complaint: 背疼
+    facts:
+      saddle_anesthesia: 没有
+      bowel_bladder_dysfunction: 没有
+      progressive_leg_weakness: 没有
+    must_not_miss_expectation:
+      spinal_cord_compression: excluded
+    expect_terminal: true

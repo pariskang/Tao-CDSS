@@ -85,9 +85,14 @@ class SkillRAG:
         return symptoms, pulses
 
     def _h_match(self, question: str) -> dict:
+        from shanghan.conformal import normalize_scores
+
         symptoms, pulses = self._parse_findings(question)
         matches = self._matcher.match(symptoms, pulses)
-        decision = self._conformal.decide({m.formula: m.score for m in matches})
+        # 与校准同变换: 每查询 softmax 归一后进入 conformal 判定
+        decision = self._conformal.decide(
+            normalize_scores({m.formula: m.score for m in matches})
+        )
         return {
             "answer": "方证匹配候选(仅供执业医师参考,需四诊合参)",
             # split-conformal 选择性预测: 置信不足即弃权转医师,
@@ -284,17 +289,32 @@ class SkillRAG:
 
     # ------------------------------------------------------------------ helpers
     def _rank_clauses(self, question: str, terms: list[str]) -> list:
-        """混合排序: 实体词精确命中为主锚(×10),BM25(字符bigram)提供
-        次级排序与无实体词时的兜底召回。确定性: 同分按 clause_id。"""
-        bm25 = dict(self._bm25.search(question, top_k=len(self._clauses)))
-        scored = []
-        for c in self._clauses:
-            anchor = sum(1 for t in set(terms) if t in c.text) if terms else 0
-            score = anchor * 10.0 + bm25.get(c.clause_id, 0.0)
+        """RRF 混合检索(Reciprocal Rank Fusion, Cormack et al. SIGIR 2009):
+        实体词精确命中榜与 BM25(字符bigram)榜按 Σ 1/(60+rank) 融合。
+        RRF 免调权、对两路分数尺度不敏感,是零训练混合检索的标准做法。
+        确定性: 两榜与融合均以 clause_id 破平。"""
+        k_rrf = 60
+        fused: dict[str, float] = {}
+        # 榜一: 实体词命中数
+        if terms:
+            anchor_scored = sorted(
+                (
+                    (sum(1 for t in set(terms) if t in c.text), c.clause_id)
+                    for c in self._clauses
+                ),
+                key=lambda x: (-x[0], x[1]),
+            )
+            for rank, (hits, cid) in enumerate(anchor_scored, start=1):
+                if hits > 0:
+                    fused[cid] = fused.get(cid, 0.0) + 1.0 / (k_rrf + rank)
+        # 榜二: BM25
+        for rank, (cid, score) in enumerate(
+            self._bm25.search(question, top_k=len(self._clauses)), start=1
+        ):
             if score > 0:
-                scored.append((score, c))
-        scored.sort(key=lambda x: (-x[0], x[1].clause_id))
-        return [c for _, c in scored]
+                fused[cid] = fused.get(cid, 0.0) + 1.0 / (k_rrf + rank)
+        ranked = sorted(fused.items(), key=lambda x: (-x[1], x[0]))
+        return [self._clause_index[cid] for cid, _ in ranked]
 
     def _evidence_for(self, clause_ids: list[str]) -> list[dict]:
         return [

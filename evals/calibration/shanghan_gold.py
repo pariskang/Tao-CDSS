@@ -111,6 +111,10 @@ def evaluate(result=None, gold: dict[str, str] | None = None) -> dict:
     report["f1_strict"] = round(f1, 4) if f1 is not None else None
     # 不确定性量化: 小样本点估计必须带区间(百分位 bootstrap,固定种子确定性)
     report["precision_ci95"] = _bootstrap_ci_precision(result, gold)
+    # conformal 弃权机制的留一覆盖自检(经验覆盖率应 ≈ 目标 1-α)
+    from shanghan.conformal import loo_coverage
+
+    report["conformal_loo"] = loo_coverage(result.patterns)
     report["rejected_correct"] = rejected_correct
     report["disclaimer"] = (
         "当前标注为 engineer_seed(PENDING_PHYSICIAN_REVIEW),"

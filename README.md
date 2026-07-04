@@ -4,7 +4,10 @@
 
 > 定位:不做"AI医生",做"医疗智能体操作系统"——患者侧智能预问诊 +
 > 医生侧 CDSS 辅助 + 全链路可审计的 Skill/MCP 原生协议栈。
-> 完整协议见 [docs/protocol-v2.md](docs/protocol-v2.md)。
+> 完整协议见 [docs/protocol-v2.md](docs/protocol-v2.md);
+> 算法与安全机制的文献依据见 [docs/research-roadmap.md](docs/research-roadmap.md)
+> (AMIE/Nature 2025、MAI-DxO、semantic entropy/Nature 2024、
+> split-conformal、spotlighting 等)。
 
 ## 当前实现范围(Sprint 0-3 垂直切片)
 
@@ -21,7 +24,7 @@
 | HermesCompose | `services/hermes-compose` | ✅ 患者/医生双通道,出站最后一级挂安全扫描;剂量回填闭环(drug_safety→filled_spans) |
 | MCP servers | `mcp_servers/` | ✅ calculator/terminology/triage/drug_safety;角色上限 HERMES_MCP_ROLE_CEILING |
 | Skills(L4) | `skills/` | ✅ emergency_triage + oncology_bone_metastasis 七件套;metrics.yaml 为评测强制门禁 |
-| 评测(L9) | `evals/` | ✅ SP 回放(metrics 门禁) + 红队回归(含 LLM 通道对抗) |
+| 评测(L9) | `evals/` | ✅ SP 回放(metrics 门禁) + 红队回归(含 LLM 通道对抗) + 确定性 self-play 仿真(AMIE 范式,免 LLM auto-rater) + 校准报告(bootstrap CI/conformal LOO 覆盖) |
 | LLM 后端 | `packages/llm-backend` | ✅ litellm 多模型 + LLMGateway 治理(剂量出站/审计/成本/重试修复) |
 | HermesAgents(L6) | `services/hermes-agents` | ✅ Manager + bounded specialists + 复杂度路由 + 多评审共识;LLM 失败确定性兜底 |
 | Shanghan-Hermes | `packages/shanghan` | ✅ 条文分支解析 → branch 级证据 → 对抗审核(可选 LLM 多评审,HERMES_LLM_MODEL 配置后自动接线) → ReleaseGate 硬拒绝 → 方证/六经/鉴别归纳 → SkillRAG 全 handler → 患者递归脱敏 |

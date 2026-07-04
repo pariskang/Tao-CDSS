@@ -54,6 +54,7 @@ def load_skill(name: str, root: Path | None = None) -> Skill:
             sensitive=s.get("sensitive", False),
             reason=s.get("reason", ""),
             keywords=tuple(s.get("keywords", [])),
+            cost=float(s.get("cost", 1.0)),
         )
         for s in slots_data.get("slots", [])
     ]

@@ -1,5 +1,31 @@
 # CHANGELOG
 
+## 2026-07-04 (科研升级第二轮: 六路文献调研驱动的算法修正与评测护栏)
+- 新增 docs/research-roadmap.md: 全部工程决策的文献依据、已否决方案
+  与待临床数据解锁项(AMIE/Nature 2025、MAI-DxO、semantic entropy/
+  Nature 2024、conformal、spotlighting、TCM 信息学六路调研综合)。
+- 选问器数学修正(BED-LLM 2508.21184): 逐条目二值 MI 求和会对
+  "弱触多病"槽位重复计分——改为联合类别互信息(含 other 残差质量);
+  新增 EIG/cost 主键(Slot.cost,MAI-DxO Stewardship)、EIG_EPS 边际
+  价值下限、CONFIDENCE_TAU 置信停问(Calibrate-Then-Act)、答案平衡度
+  二级决胜(UoT);红旗/must-not-miss 分支不受任何预算/停问影响。
+- conformal 修正: 匹配器原始分数无界→每查询 softmax 归一后进入校准
+  与推断(校准/推断同变换);新增留一覆盖自检 loo_coverage()+Wilson
+  95% CI,接入 shanghan-calibration 报告。
+- 一致性门控升级为字段级(consistency_gate.py 纯函数): safety 字段
+  全票/standard 法定多数/info 仅记录;返回 medoid 真实样本防跨字段
+  "缝合怪";门控只有否决权,不豁免任何下游校验。
+- 注入防御纵深: 数据字符串叶逐字符 datamarking(U+2063,CJK 适配
+  Hines et al. 2024;预置标记先剥离)+ spotlight 边界不变量断言
+  (违反拒绝外呼并审计 CRIT);guardrails 声明标记语义;可按部署关闭。
+- 检索升级 RRF(Cormack SIGIR 2009): 实体词榜×BM25 榜按 Σ1/(60+rank)
+  融合,免调权。
+- 新增确定性 self-play 仿真评测(AMIE 范式): evals/simulation/
+  selfplay.py + 双 skill 场景集 + 免 LLM auto-rater 五指标
+  (planted红旗召回/鉴别处置/剂量泄漏0/重复提问预算/可终止性),
+  `just selfplay <skill>`,已入 pytest 回归。
+- 测试 600 项全绿(新增 34);安全三模块覆盖率 100%。
+
 ## 2026-07-04 (科研升级轮: 文献支撑的算法与安全机制)
 - BM25 条文检索(Okapi BM25 + 中文字符 bigram,零依赖): SkillRAG
   generic/clause 检索改为实体词锚定×10 + BM25 混合排序;无实体词问句

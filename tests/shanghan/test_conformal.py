@@ -74,3 +74,45 @@ class TestPatternSelfCalibration:
 
         out = default_rag().ask("匹配什么方证? 与伤寒无关的表现")
         assert out["conformal"]["abstain"]
+
+
+class TestNormalization:
+    def test_softmax_normalizes_unbounded_scores(self):
+        from shanghan.conformal import normalize_scores
+
+        norm = normalize_scores({"甲": 100.0, "乙": 99.0, "丙": -5.0})
+        assert abs(sum(norm.values()) - 1.0) < 1e-9
+        assert all(0.0 < v < 1.0 for v in norm.values())
+        assert norm["甲"] > norm["乙"] > norm["丙"]
+
+    def test_normalization_order_preserving(self):
+        """归一化保序: 预测集成员随原始分数单调。"""
+        from shanghan.conformal import normalize_scores
+
+        raw = {"a": 3.0, "b": 1.0, "c": 0.5}
+        norm = normalize_scores(raw)
+        assert sorted(raw, key=raw.get) == sorted(norm, key=norm.get)
+
+    def test_empty_scores(self):
+        from shanghan.conformal import normalize_scores
+
+        assert normalize_scores({}) == {}
+
+
+class TestLOOCoverage:
+    def test_loo_coverage_near_target(self):
+        """留一经验覆盖率应落在目标 1-α 附近(Wilson CI 内含目标或更高)。"""
+        from shanghan.conformal import loo_coverage
+        from shanghan.runtime import default_result
+
+        report = loo_coverage(default_result().patterns, alpha=0.1)
+        assert report["coverage"] is not None
+        assert report["evaluable_folds"] >= 10
+        # 自校准分布上覆盖率不得显著低于目标: CI 上界须达标
+        assert report["ci95"][1] >= report["coverage_target"]
+
+    def test_too_few_points_honest_none(self):
+        from shanghan.conformal import loo_coverage
+
+        report = loo_coverage({}, alpha=0.1)
+        assert report["coverage"] is None

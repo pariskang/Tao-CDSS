@@ -27,16 +27,39 @@ def _digest(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()[:16]
 
 
-#: Spotlighting 定界哨兵(Hines et al. 2024: 显式标记不可信数据边界,
-#: 显著降低间接注入成功率)。数据内出现的哨兵字符先被替换为全角变体,
-#: 使数据永远无法伪造边界。
+#: Spotlighting 定界哨兵(Hines et al. 2024, arXiv:2403.14720: 显式标记
+#: 不可信数据边界,显著降低间接注入成功率)。数据内出现的哨兵字符先被
+#: 替换为全角变体,使数据永远无法伪造边界。
 DATA_START = "«HERMES_DATA_START»"
 DATA_END = "«HERMES_DATA_END»"
+#: Datamarking 标记符(U+2063 INVISIBLE SEPARATOR): Hines et al. 的
+#: datamarking 在英文用特殊字符替换空格;中文无空格,等价形式是在数据
+#: 字符串叶的字符间插入标记——注入指令("忽略以上指令")在 prompt 中
+#: 不再以连续子串出现,而 system 守则已声明该标记 = 不可信数据。
+DATAMARK = "⁣"
 
 
 def spotlight(payload_json: str) -> str:
     neutral = payload_json.replace("«", "《").replace("»", "》")
     return f"{DATA_START}\n{neutral}\n{DATA_END}"
+
+
+def datamark_tree(value):
+    """递归对数据字符串叶做 datamarking;dict 的 key 不动(结构可读)。
+
+    先剥离叶内既有标记符——攻击者预置 DATAMARK 无法伪装成"已标记"
+    或干扰标记密度。仅处理 str/list/tuple/dict 叶,数值布尔原样。
+    """
+    if isinstance(value, str):
+        clean = value.replace(DATAMARK, "")
+        return DATAMARK.join(clean) if clean else clean
+    if isinstance(value, list):
+        return [datamark_tree(x) for x in value]
+    if isinstance(value, tuple):
+        return tuple(datamark_tree(x) for x in value)
+    if isinstance(value, dict):
+        return {k: datamark_tree(v) for k, v in value.items()}
+    return value
 
 
 class LLMCallFailed(RuntimeError):
@@ -52,6 +75,7 @@ class LLMGateway:
         cost_log: CostLog | None = None,
         max_retries: int = 2,
         retry_backoff: float = 0.5,
+        datamark: bool = True,
     ):
         self._backend = backend
         self._ledger = ledger or AuditLedger()
@@ -59,6 +83,9 @@ class LLMGateway:
         self.cost_log = cost_log or CostLog()
         self._max_retries = max_retries
         self._retry_backoff = retry_backoff
+        # datamarking 使数据 token 量增加(CJK 约 2 倍),对强模型的理解
+        # 影响有限(Hines et al. 报告任务性能基本保持);可按部署关闭
+        self._datamark = datamark
 
     # ------------------------------------------------------------------
     def structured_call(
@@ -78,7 +105,7 @@ class LLMGateway:
         # 不可信内容仅作为 data 注入 user 段(硬规则4);
         # 完整 JSON Schema 一并下发,让模型看到字段级约束而非仅类名。
         envelope: dict = {
-            "data": user_data,
+            "data": datamark_tree(user_data) if self._datamark else user_data,
             "output_schema": {
                 "name": schema.__name__,
                 "json_schema": schema.model_json_schema(),
@@ -87,6 +114,14 @@ class LLMGateway:
         if sample_tag is not None:  # 一致性采样扰动标记(不污染 data 本体)
             envelope["sample_tag"] = sample_tag
         user = spotlight(json.dumps(envelope, ensure_ascii=False))
+        # 边界不变量(纵深防御): 最终 prompt 有且仅有一对数据哨兵,
+        # 任何伪造边界都已被中和;违反即拒绝并审计
+        if user.count(DATA_START) != 1 or user.count(DATA_END) != 1:
+            self._ledger.append(
+                self._encounter_id, f"llm:{role}", "spotlight_violation",
+                {"severity": "CRIT"},
+            )
+            raise LLMCallFailed("spotlight 边界不变量被破坏,拒绝外呼")
         messages = [
             {"role": "system", "content": system},
             {"role": "user", "content": user},
@@ -128,54 +163,65 @@ class LLMGateway:
     def structured_call_consistent(
         self, role: str, user_data: dict, schema: type[BaseModel],
         k: int = 3, quorum: int = 2,
+        safety_fields: tuple[str, ...] = (),
+        info_fields: tuple[str, ...] = (),
     ) -> tuple[BaseModel, dict]:
-        """k 采样一致性门控(semantic entropy 的结构化简化,
-        Farquhar et al., Nature 2024): 结构化输出天然定义语义等价类
-        (canonical JSON 相同 = 同一等价类),k 次独立采样按等价类计票,
-        众数达 quorum 才放行;否则视为高不确定性,抛出由调用方走确定性
-        兜底。k=1 退化为普通调用(默认零成本增加)。
+        """k 采样字段级一致性门控(semantic entropy 的结构化简化,
+        Farquhar et al., Nature 2024;字段级计票见 consistency_gate)。
 
-        返回 (胜出输出, 一致性报告 {samples, agreement, votes, errors})。
+        k 次独立采样 → 按 Pydantic 字段分档计票(safety 全票/standard
+        法定多数/info 仅记录) → 达标返回 medoid 真实样本,否则抛出
+        由调用方走确定性兜底。k=1 退化为普通调用(默认零成本)。
+        门控只有否决权: 放行结果仍过 dose_egress 等全部下游校验。
+
+        返回 (medoid 样本, 报告 {samples, agreement, votes, errors, fields})。
         """
+        from hermes_llm.consistency_gate import FAIL, PASS, gate
+
         if k <= 1:
             return self.structured_call(role, user_data, schema), {
                 "samples": 1, "agreement": 1.0, "votes": 1, "errors": 0,
             }
-        buckets: dict[str, list] = {}
+        samples: list[BaseModel] = []
         errors = 0
         for i in range(k):
             try:
-                out = self.structured_call(
-                    role, user_data, schema, sample_tag=i
+                samples.append(
+                    self.structured_call(role, user_data, schema, sample_tag=i)
                 )
             except LLMCallFailed:
                 errors += 1
-                continue
-            key = json.dumps(out.model_dump(), sort_keys=True,
-                             ensure_ascii=False)
-            buckets.setdefault(key, []).append(out)
-        if not buckets:
+        if not samples:
             raise LLMCallFailed(f"一致性采样全部失败({errors}/{k})")
-        # 众数等价类;同票取 canonical key 字典序保证确定性
-        top_key = max(buckets, key=lambda kk: (len(buckets[kk]), kk))
-        top_n = len(buckets[top_key])
+        quorum_ratio = quorum / k
+        result = gate(
+            samples, safety_fields=safety_fields, info_fields=info_fields,
+            quorum_ratio=quorum_ratio,
+        )
+        votes = min(
+            (f["modal_votes"] for f in result.field_report.values()
+             if f["tier"] != "info"),
+            default=len(samples),
+        )
         report = {
             "samples": k,
-            "agreement": round(top_n / k, 4),
-            "votes": top_n,
+            "agreement": result.min_agreement,
+            "votes": votes,
             "errors": errors,
+            "fields": result.field_report,
         }
         self._ledger.append(
             self._encounter_id, f"llm:{role}", "llm_consistency",
-            {**report, "equivalence_classes": len(buckets),
-             "severity": "INFO" if top_n >= quorum else "WARN"},
+            {"samples": k, "agreement": result.min_agreement,
+             "decision": result.decision, "errors": errors,
+             "severity": "INFO" if result.decision == PASS else "WARN"},
         )
-        if top_n < quorum:
-            raise LLMCallFailed(
-                f"一致性不足: 众数 {top_n}/{k} < quorum {quorum}"
-                f"(语义等价类 {len(buckets)} 个)"
+        if result.decision != PASS:
+            detail = "安全字段分歧" if result.decision == FAIL else (
+                f"众数 {votes}/{k} < quorum {quorum}"
             )
-        return buckets[top_key][0], report
+            raise LLMCallFailed(f"一致性不足: {detail}")
+        return samples[result.chosen_index], report
 
     # ------------------------------------------------------------------
     @staticmethod
