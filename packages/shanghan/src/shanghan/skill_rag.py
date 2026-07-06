@@ -15,6 +15,7 @@ from shanghan.matcher import FormulaMatcher
 from shanghan.paper import PaperDraftGenerator
 from shanghan.patient_safety import governed
 from shanghan.pipeline import PipelineResult
+from shanghan.retrieval import BM25Index
 
 HANDLERS = (
     "match", "formula", "mistreatment", "contraindication", "therapy",
@@ -32,7 +33,12 @@ class SkillRAG:
         self._matcher = FormulaMatcher(result.patterns)
         self._paper = PaperDraftGenerator()
         self._clauses = load_corpus()
+        self._clause_index = {c.clause_id: c for c in self._clauses}
         self._formula_names = sorted(result.patterns, key=len, reverse=True)
+        self._bm25 = BM25Index({c.clause_id: c.text for c in self._clauses})
+        from shanghan.conformal import calibrate_from_patterns
+
+        self._conformal = calibrate_from_patterns(result.patterns)
 
     # ------------------------------------------------------------------ route
     def route(self, question: str) -> str:
@@ -42,10 +48,12 @@ class SkillRAG:
             return "paper"
         if any(k in question for k in ("误治", "坏病", "反下", "误汗", "误下")):
             return "mistreatment"
-        if any(k in question for k in ("禁忌", "不可与", "不能用")):
-            return "contraindication"
+        # 鉴别优先于禁忌: "A和B的鉴别与禁忌"这类混合问句按鉴别处理,
+        # 鉴别 handler 的输出天然携带两方的判别信息
         if any(k in question for k in ("鉴别", "区别", "怎么分")):
             return "differential"
+        if any(k in question for k in ("禁忌", "不可与", "不能用")):
+            return "contraindication"
         if any(k in question for k in ("六经", "提纲")):
             return "six_channel"
         if _CLAUSE_NO.search(question) or "条文" in question or "原文" in question:
@@ -77,10 +85,26 @@ class SkillRAG:
         return symptoms, pulses
 
     def _h_match(self, question: str) -> dict:
+        from shanghan.conformal import normalize_scores
+
         symptoms, pulses = self._parse_findings(question)
         matches = self._matcher.match(symptoms, pulses)
+        # 与校准同变换: 每查询 softmax 归一后进入 conformal 判定
+        decision = self._conformal.decide(
+            normalize_scores({m.formula: m.score for m in matches})
+        )
         return {
             "answer": "方证匹配候选(仅供执业医师参考,需四诊合参)",
+            # split-conformal 选择性预测: 置信不足即弃权转医师,
+            # 覆盖保证基于 engineer_seed 自校准分布(PENDING 医师病例集)
+            "conformal": {
+                "abstain": decision.abstain,
+                "prediction_set": decision.prediction_set,
+                "coverage_target": decision.coverage_target,
+                "calibration_n": decision.calibration_n,
+                "reason": decision.reason,
+                "review": "PENDING_PHYSICIAN_REVIEW",
+            },
             "parsed": {"symptoms": symptoms, "pulses": pulses},
             "matched_formula_patterns": [
                 {
@@ -124,22 +148,33 @@ class SkillRAG:
             "evidence": self._evidence_for(p.supporting_clauses),
         }
 
+    def _rules_of_type(self, rule_type: str, question: str) -> list[dict]:
+        """按类型取规则;问句提及具体方剂时只保留与之相关的规则,
+        避免把全库禁忌/误治一股脑返回造成误导。"""
+        mentioned = {f for f in self._formula_names if f in question}
+        views = []
+        for ar in self._result.approved:
+            if ar.release_level == "rejected" or ar.rule.rule_type != rule_type:
+                continue
+            if mentioned:
+                concl = ar.rule.then_conclusions
+                related = {
+                    concl.get("formula"), concl.get("forbidden_formula")
+                } & mentioned
+                span_related = any(
+                    f in (ar.rule.evidence_span or "") for f in mentioned
+                )
+                if not related and not span_related:
+                    continue
+            views.append(self._rule_view(ar))
+        return views
+
     def _h_mistreatment(self, question: str) -> dict:
-        rules = [
-            self._rule_view(ar)
-            for ar in self._result.approved
-            if ar.release_level != "rejected"
-            and ar.rule.rule_type == "mistreatment_rule"
-        ]
+        rules = self._rules_of_type("mistreatment_rule", question)
         return {"answer": "误治/变证救治规则", "rules": rules}
 
     def _h_contraindication(self, question: str) -> dict:
-        rules = [
-            self._rule_view(ar)
-            for ar in self._result.approved
-            if ar.release_level != "rejected"
-            and ar.rule.rule_type == "contraindication_rule"
-        ]
+        rules = self._rules_of_type("contraindication_rule", question)
         return {"answer": "禁忌规则(不可与)", "rules": rules}
 
     def _h_therapy(self, question: str) -> dict:
@@ -180,9 +215,14 @@ class SkillRAG:
             no = int(m.group(1))
             hits = [c for c in self._clauses if c.no == no]
         else:
-            hits = [c for c in self._clauses if any(ch in question for ch in c.text[:6])]
+            # 无条号时: 实体词锚定 + BM25 混合排序(单字符包含匹配已废弃)
+            symptoms, pulses = self._parse_findings(question)
+            terms = list(symptoms + pulses)
+            terms.extend(f for f in self._formula_names if f in question)
+            hits = self._rank_clauses(question, terms)
         return {
-            "answer": "条文检索结果",
+            "answer": "条文检索结果" if hits else
+                      "未检索到相关条文(问句中未识别出条号或已收录的证候/方剂名)",
             "clauses": [
                 {"clause_id": c.clause_id, "no": c.no, "channel": c.channel,
                  "text": c.text}
@@ -208,12 +248,22 @@ class SkillRAG:
     def _h_differential(self, question: str) -> dict:
         mentioned = [f for f in self._formula_names if f in question]
         pairs = self._result.differentials
+        answer = "方证鉴别对"
         if len(mentioned) >= 2:
-            want = set(mentioned[:2])
+            # 按问句出现顺序取前两个方剂
+            ordered = sorted(mentioned, key=question.find)
+            want = set(ordered[:2])
             exact = [p for p in pairs if {p.formula_a, p.formula_b} == want]
-            pairs = exact or pairs
+            if not exact:
+                # 找不到精确对时明确说"没有",绝不回退到无关鉴别对误导使用者
+                return {
+                    "answer": f"当前语料未归纳出 {'、'.join(ordered[:2])} 的"
+                              "共有证候鉴别对(可能两方证候无交集或语料未覆盖)",
+                    "pairs": [],
+                }
+            pairs = exact
         return {
-            "answer": "方证鉴别对",
+            "answer": answer,
             "pairs": [
                 {
                     "formula_a": p.formula_a,
@@ -229,9 +279,7 @@ class SkillRAG:
     def _h_generic(self, question: str) -> dict:
         symptoms, pulses = self._parse_findings(question)
         terms = symptoms + pulses
-        hits = [
-            c for c in self._clauses if any(t in c.text for t in terms)
-        ] if terms else []
+        hits = self._rank_clauses(question, terms)
         return {
             "answer": "原文证据检索(generic)",
             "evidence": [
@@ -240,12 +288,39 @@ class SkillRAG:
         }
 
     # ------------------------------------------------------------------ helpers
+    def _rank_clauses(self, question: str, terms: list[str]) -> list:
+        """RRF 混合检索(Reciprocal Rank Fusion, Cormack et al. SIGIR 2009):
+        实体词精确命中榜与 BM25(字符bigram)榜按 Σ 1/(60+rank) 融合。
+        RRF 免调权、对两路分数尺度不敏感,是零训练混合检索的标准做法。
+        确定性: 两榜与融合均以 clause_id 破平。"""
+        k_rrf = 60
+        fused: dict[str, float] = {}
+        # 榜一: 实体词命中数
+        if terms:
+            anchor_scored = sorted(
+                (
+                    (sum(1 for t in set(terms) if t in c.text), c.clause_id)
+                    for c in self._clauses
+                ),
+                key=lambda x: (-x[0], x[1]),
+            )
+            for rank, (hits, cid) in enumerate(anchor_scored, start=1):
+                if hits > 0:
+                    fused[cid] = fused.get(cid, 0.0) + 1.0 / (k_rrf + rank)
+        # 榜二: BM25
+        for rank, (cid, score) in enumerate(
+            self._bm25.search(question, top_k=len(self._clauses)), start=1
+        ):
+            if score > 0:
+                fused[cid] = fused.get(cid, 0.0) + 1.0 / (k_rrf + rank)
+        ranked = sorted(fused.items(), key=lambda x: (-x[1], x[0]))
+        return [self._clause_index[cid] for cid, _ in ranked]
+
     def _evidence_for(self, clause_ids: list[str]) -> list[dict]:
-        index = {c.clause_id: c for c in self._clauses}
         return [
-            {"clause_id": cid, "text": index[cid].text}
+            {"clause_id": cid, "text": self._clause_index[cid].text}
             for cid in clause_ids
-            if cid in index
+            if cid in self._clause_index
         ]
 
     @staticmethod

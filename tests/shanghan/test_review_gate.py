@@ -223,3 +223,40 @@ class TestMultiReviewerConsensus:
         ar = pipeline.review(guizhi_rule(rules))
         assert ar.release_level == "rejected"
         assert "llm_reviewer_veto" in ar.problems
+
+    def test_llm_review_adapter_wires_gateway(self, index, rules):
+        """llm_review 适配器: LLMGateway 评审真实接入 extra_reviewers,
+        fail 判决拒绝规则,评审故障降级 warn 不阻断。"""
+        from audit_chain import AuditLedger
+        from hermes_llm import LLMGateway, StubLLMBackend
+        from shanghan.llm_review import make_llm_reviewers
+
+        backend = StubLLMBackend(
+            responses=['{"verdict": "fail", "problems": ["IF与THEN不同分支"]}']
+        )
+        gw = LLMGateway(backend, ledger=AuditLedger(),
+                        encounter_id="llmrev", retry_backoff=0)
+        reviewers = make_llm_reviewers(gw, roles=("tcm_reviewer",))
+        verdict = reviewers[0](guizhi_rule(rules))
+        assert verdict.verdict == "fail"
+        assert any("IF与THEN不同分支" in p for p in verdict.problems)
+        # 审计入链(硬规则7: 经网关的调用自动携带审计)
+        assert gw.cost_log.summary()["calls"] == 1
+
+    def test_llm_review_adapter_error_degrades_to_warn(self, rules):
+        from shanghan.llm_review import make_llm_reviewers
+
+        class BrokenGateway:
+            def structured_call(self, *a, **kw):
+                raise TimeoutError("down")
+
+        reviewers = make_llm_reviewers(BrokenGateway(), roles=("critic",))
+        verdict = reviewers[0](guizhi_rule(rules))
+        assert verdict.verdict == "warn"
+        assert any("llm_reviewer_error" in p for p in verdict.problems)
+
+    def test_default_reviewers_empty_without_model(self, monkeypatch):
+        from shanghan.llm_review import default_llm_reviewers
+
+        monkeypatch.delenv("HERMES_LLM_MODEL", raising=False)
+        assert default_llm_reviewers() == []

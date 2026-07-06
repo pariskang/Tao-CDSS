@@ -51,7 +51,7 @@ if 空 if_conditions 且 空 then_conclusions: rejected
 ## LLM 接入(litellm)
 
 ```bash
-export HERMES_LLM_MODEL="anthropic/claude-sonnet-4-6"  # 或 openai/gemini/minimax/ollama
+export HERMES_LLM_MODEL="anthropic/claude-sonnet-5"  # 或 openai/gemini/minimax/ollama
 export HERMES_LLM_API_BASE="..."                        # 可选,院内私有化端点
 ```
 

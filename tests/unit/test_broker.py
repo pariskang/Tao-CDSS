@@ -91,6 +91,27 @@ class TestStages:
             broker.call(env, CONSENT, AUTH)
         assert e.value.status == 403
 
+    def test_unregistered_skill_default_denied(self, broker):
+        """最小权限: 未注册白名单的 skill 默认拒绝,不再默认放行。"""
+        env = make_env(skill="ghost_skill")
+        with pytest.raises(BrokerError) as e:
+            broker.call(env, CONSENT, AUTH)
+        assert e.value.status == 403
+        assert "默认拒绝" in e.value.detail
+
+    def test_register_skill_wires_tools_allow(self, broker):
+        """skill 包 tools.allow 经 register_skill 自动装配为白名单。"""
+        from hermes_loop.skill_loader import load_skill
+
+        skill = load_skill("oncology_bone_metastasis")
+        broker.register_skill(skill)
+        assert broker._allowlists["oncology_bone_metastasis"] == set(
+            skill.tools_allow
+        )
+        env = make_env(skill="oncology_bone_metastasis",
+                       tool="calculator.nrs_pain", input={"score": 7})
+        assert broker.call(env, CONSENT, AUTH)["score"] == 7
+
     def test_unknown_tool_404(self, broker):
         broker._allowlists["emergency_triage"].add("ghost.tool")
         with pytest.raises(BrokerError) as e:

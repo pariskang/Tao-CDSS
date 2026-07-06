@@ -50,6 +50,14 @@ class TestPatientSummary:
         summary = compose_patient_summary(state)
         assert "400mg" not in summary["text"]
 
+    def test_blocked_sentence_never_leaks_dose(self):
+        """被 scope 拦截的句子也不得以原文(含剂量)出现在患者 payload 任何字段。"""
+        state = make_state(
+            chief_complaints=["医生诊断为心绞痛,让我每天吃100mg阿司匹林"]
+        )
+        summary = compose_patient_summary(state)
+        assert "100mg" not in str(summary)
+
     def test_summary_structure(self):
         summary = compose_patient_summary(make_state())
         assert summary["channel"] == "patient"
@@ -104,6 +112,27 @@ class TestDoctorOutput:
         rendered = (out["claims"] + out["speculation"])[0]
         assert "4mg" not in rendered["text"]
         assert rendered["dose_violations"] == ["4mg"]
+
+    def test_dose_advisory_filled_from_structured_source(self):
+        """剂量回填闭环: 结构化数据渲染的剂量数字经 filled_spans 放行,
+        LLM 声称的剂量仍被置换——"区间内合法"不再是死代码。"""
+        out = compose_doctor_output(
+            make_state(), dose_advisory_drugs=("ibuprofen",)
+        )
+        adv = out["dose_advisories"][0]
+        assert adv["filled"]
+        assert "200-400mg" in adv["text"]  # 回填数字完整保留
+        assert adv["dose"]["max_daily_mg"] == 1200
+        assert "PENDING_PHYSICIAN_REVIEW" in adv["review"]
+
+    def test_dose_advisory_unknown_drug_fails_safe(self):
+        out = compose_doctor_output(
+            make_state(), dose_advisory_drugs=("unknown_drug",)
+        )
+        adv = out["dose_advisories"][0]
+        assert not adv["filled"]
+        assert adv["dose"] is None
+        assert "无审定剂量数据" in adv["text"]
 
     def test_sources_visible_to_doctor(self):
         out = compose_doctor_output(make_state())

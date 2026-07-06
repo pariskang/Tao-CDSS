@@ -83,6 +83,17 @@ class TestTerminology:
         assert not result["requires_double_confirm"]
         assert result["confusion_pairs"] == []
 
+    def test_unknown_text_gets_no_drug_id(self):
+        """任意口述文本不得被冒充为已归一的药物 ID。"""
+        result = map_drug_name("随便什么文本")
+        assert result["drug_id"] is None
+        assert not result["known"]
+
+    def test_known_drug_gets_drug_id(self):
+        result = map_drug_name("阿糖腺苷")
+        assert result["drug_id"] == "local:阿糖腺苷"
+        assert result["known"]
+
 
 class TestTriage:
     def test_wraps_redflag_engine(self):
@@ -93,16 +104,30 @@ class TestTriage:
     def test_benign(self):
         assert red_flag_check(["有点鼻塞"])["level"] is None
 
+    def test_str_input_not_split_into_chars(self):
+        """裸字符串会被 list() 拆成单字导致红旗静默漏报,必须按整句处理。"""
+        assert red_flag_check("突然剧烈头痛")["level"] == "E1"
+
+    def test_invalid_input_rejected(self):
+        with pytest.raises(TypeError):
+            red_flag_check([{"text": "突然剧烈头痛"}])
+
 
 class TestDrugSafety:
     def test_allergy_conflict(self):
         assert check_allergy("青霉素", ["青霉素", "磺胺"])["allergy_conflict"]
         assert not check_allergy("布洛芬", ["青霉素"])["allergy_conflict"]
 
+    def test_allergy_case_insensitive(self):
+        """过敏比对大小写/空白归一,宁可多报不可漏报。"""
+        assert check_allergy("Ibuprofen", ["ibuprofen"])["allergy_conflict"]
+        assert check_allergy("青霉素 ", ["青霉素"])["allergy_conflict"]
+
     def test_interaction(self):
         found = check_interaction(["warfarin", "aspirin", "x"])["interactions"]
         assert found and found[0]["risk"]
         assert check_interaction(["x", "y"])["interactions"] == []
+        assert check_interaction(["Warfarin", "ASPIRIN"])["interactions"]
 
     def test_dose_range_structured_only(self):
         result = get_dose_range("ibuprofen", "adult")
@@ -111,3 +136,38 @@ class TestDrugSafety:
 
     def test_unknown_drug_returns_none_never_guesses(self):
         assert get_dose_range("unknown_drug")["dose"] is None
+
+
+class TestShanghanMcpRoleCeiling:
+    """stdio 形态客户端自报角色不可信,HERMES_MCP_ROLE_CEILING 钉角色上限。"""
+
+    def test_ceiling_caps_selfreported_doctor(self, monkeypatch):
+        from mcp_servers.shanghan_mcp.server import _cap_role
+
+        monkeypatch.setenv("HERMES_MCP_ROLE_CEILING", "patient")
+        assert _cap_role("doctor") == "patient"
+        assert _cap_role("researcher") == "patient"
+        assert _cap_role("patient") == "patient"
+
+    def test_default_ceiling_is_doctor(self, monkeypatch):
+        from mcp_servers.shanghan_mcp.server import _cap_role
+
+        monkeypatch.delenv("HERMES_MCP_ROLE_CEILING", raising=False)
+        assert _cap_role("doctor") == "doctor"
+        assert _cap_role("patient") == "patient"
+
+    def test_invalid_values_collapse_to_least_privilege(self, monkeypatch):
+        from mcp_servers.shanghan_mcp.server import _cap_role
+
+        monkeypatch.setenv("HERMES_MCP_ROLE_CEILING", "admin")
+        assert _cap_role("doctor") == "patient"
+        monkeypatch.setenv("HERMES_MCP_ROLE_CEILING", "doctor")
+        assert _cap_role("hacker") == "patient"
+
+    def test_match_refused_below_doctor_ceiling(self, monkeypatch):
+        from mcp_servers.shanghan_mcp.server import tool_shanghan_match
+
+        monkeypatch.setenv("HERMES_MCP_ROLE_CEILING", "patient")
+        out = tool_shanghan_match(["恶寒", "无汗"])
+        assert out.get("error") == "role_ceiling"
+        assert "matches" not in out

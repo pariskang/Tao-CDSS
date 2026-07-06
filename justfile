@@ -14,7 +14,7 @@ replay skill:
     .venv/bin/python -m evals.simulation.replay --skill {{skill}}
 
 redteam:
-    PYTHONPATH=".:packages/contracts/src:packages/redflag-engine/src:packages/audit-chain/src:packages/eventstore/src:services/hermes-guard/src:services/hermes-loop/src:services/hermes-broker/src:services/hermes-compose/src:services/hermes-voice/src" \
+    PYTHONPATH=".:packages/contracts/src:packages/redflag-engine/src:packages/audit-chain/src:packages/eventstore/src:packages/llm-backend/src:services/hermes-guard/src:services/hermes-loop/src:services/hermes-broker/src:services/hermes-compose/src:services/hermes-voice/src" \
     .venv/bin/python -m evals.redteam.run
 
 schema-export:
@@ -32,6 +32,10 @@ shanghan-ask question:
 shanghan-calibration:
     PYTHONPATH=".:packages/contracts/src:packages/redflag-engine/src:packages/audit-chain/src:packages/eventstore/src:packages/shanghan/src:packages/llm-backend/src:services/hermes-guard/src:services/hermes-loop/src:services/hermes-broker/src:services/hermes-compose/src:services/hermes-voice/src:services/hermes-agents/src" \
     .venv/bin/python -m evals.calibration.shanghan_gold
+
+selfplay skill:
+    PYTHONPATH=".:packages/contracts/src:packages/redflag-engine/src:packages/audit-chain/src:packages/eventstore/src:packages/llm-backend/src:services/hermes-guard/src:services/hermes-loop/src:services/hermes-broker/src:services/hermes-compose/src:services/hermes-voice/src" \
+    .venv/bin/python -m evals.simulation.selfplay --skill {{skill}}
 
 mcp-server:
     bash scripts/run_shanghan_mcp.sh

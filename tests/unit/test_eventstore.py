@@ -19,3 +19,17 @@ def test_unicode_payload_roundtrip():
 
 def test_empty_encounter():
     assert EventStore().events("nope") == []
+
+
+def test_all_events_global_replay():
+    """全量回放 API: 跨 encounter 按全局序返回。"""
+    from eventstore import EventStore
+
+    store = EventStore()
+    store.append("enc_a", "utterance", {"text": "a1"})
+    store.append("enc_b", "utterance", {"text": "b1"})
+    store.append("enc_a", "utterance", {"text": "a2"})
+    allev = store.all_events()
+    assert [e["encounter_id"] for e in allev] == ["enc_a", "enc_b", "enc_a"]
+    assert [e["seq"] for e in allev] == sorted(e["seq"] for e in allev)
+    assert store.encounter_ids() == ["enc_a", "enc_b"]

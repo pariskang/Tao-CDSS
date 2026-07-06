@@ -21,7 +21,7 @@ class LLMResult:
 
 
 class LLMBackend(Protocol):
-    def complete(self, messages: list[dict], temperature: float = 0.0,
+    def complete(self, messages: list[dict], temperature: float | None = 0.0,
                  max_tokens: int = 1024) -> LLMResult:
         ...  # pragma: no cover
 
@@ -35,7 +35,7 @@ class StubLLMBackend:
     calls: list[list[dict]] = field(default_factory=list)
     model: str = "stub"
 
-    def complete(self, messages: list[dict], temperature: float = 0.0,
+    def complete(self, messages: list[dict], temperature: float | None = 0.0,
                  max_tokens: int = 1024) -> LLMResult:
         self.calls.append(messages)
         text = self.responses.pop(0) if self.responses else self.default
@@ -47,12 +47,13 @@ class StubLLMBackend:
 class LiteLLMBackend:
     """litellm 统一后端: 模型经 HERMES_LLM_MODEL 或构造参数指定。
 
-    例: openai/gpt-4o-mini, anthropic/claude-sonnet-4-6, gemini/gemini-2.5-pro,
-        minimax/abab6.5s-chat, ollama/qwen2.5(院内私有化部署)。
+    例: anthropic/claude-sonnet-5, anthropic/claude-opus-4-8,
+        openai/gpt-4o-mini, gemini/gemini-2.5-pro,
+        ollama/qwen2.5(院内私有化部署)。
     """
 
     def __init__(self, model: str | None = None, api_base: str | None = None,
-                 timeout: float = 30.0):
+                 timeout: float = 30.0, json_response: bool = True):
         try:
             import litellm  # noqa: F401
         except ImportError as e:  # pragma: no cover - 依赖已声明,防御分支
@@ -63,22 +64,30 @@ class LiteLLMBackend:
             raise BackendUnavailable("未配置模型: 设置 HERMES_LLM_MODEL 或传入 model")
         self._api_base = api_base or os.environ.get("HERMES_LLM_API_BASE")
         self._timeout = timeout
+        self._json_response = json_response
 
-    def complete(self, messages: list[dict], temperature: float = 0.0,
+    def complete(self, messages: list[dict], temperature: float | None = 0.0,
                  max_tokens: int = 1024) -> LLMResult:  # pragma: no cover - 需网络
+        # drop_params: 新一代模型(如 Anthropic Claude 5 系)已移除采样参数,
+        # 不支持的参数由 litellm 丢弃而非 400 硬失败。
         kwargs: dict = dict(
-            model=self.model, messages=messages, temperature=temperature,
-            max_tokens=max_tokens, timeout=self._timeout,
+            model=self.model, messages=messages,
+            max_tokens=max_tokens, timeout=self._timeout, drop_params=True,
         )
+        if temperature is not None:
+            kwargs["temperature"] = temperature
+        if self._json_response:
+            kwargs["response_format"] = {"type": "json_object"}
         if self._api_base:
             kwargs["api_base"] = self._api_base
         resp = self._litellm.completion(**kwargs)
         usage = getattr(resp, "usage", None)
-        cost = 0.0
         try:
             cost = self._litellm.completion_cost(completion_response=resp) or 0.0
         except Exception:
-            cost = 0.0
+            # 私有化端点/litellm 未收录模型: 成本未知,用 -1 哨兵而非静默 0,
+            # CostLog.summary 会单列 cost_unknown_calls。
+            cost = -1.0
         return LLMResult(
             text=resp.choices[0].message.content or "",
             model=self.model,

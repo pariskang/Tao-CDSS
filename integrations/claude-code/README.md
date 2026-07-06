@@ -11,6 +11,6 @@
 
 LLM 后端: 设置环境变量
 ```bash
-export HERMES_LLM_MODEL="anthropic/claude-sonnet-4-6"   # 任意 litellm 模型名
+export HERMES_LLM_MODEL="anthropic/claude-sonnet-5"   # 任意 litellm 模型名
 export HERMES_LLM_API_BASE="..."                         # 可选,院内私有化端点
 ```

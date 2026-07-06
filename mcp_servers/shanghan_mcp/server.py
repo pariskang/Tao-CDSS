@@ -7,10 +7,28 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 
 PROTOCOL_VERSION = "2024-11-05"
 SERVER_INFO = {"name": "shanghan-hermes", "version": "2.0.0"}
+
+#: 角色权限序(低→高)。stdio 形态无传输层认证,客户端自报角色不可信;
+#: 部署方用 HERMES_MCP_ROLE_CEILING 钉住本进程的角色上限(最小权限):
+#: 患者侧终端配 patient 后,即使请求自称 doctor 也只能拿到脱敏输出。
+_ROLE_ORDER = ("patient", "researcher", "doctor")
+
+
+def _cap_role(requested: str) -> str:
+    ceiling = os.environ.get("HERMES_MCP_ROLE_CEILING", "doctor")
+    if ceiling not in _ROLE_ORDER:
+        ceiling = "patient"  # 配置非法时收敛到最小权限
+    if requested not in _ROLE_ORDER:
+        return "patient"
+    if _ROLE_ORDER.index(requested) > _ROLE_ORDER.index(ceiling):
+        return ceiling
+    return requested
+
 
 def _ensure_pipeline():
     from shanghan.runtime import default_rag, default_result
@@ -21,10 +39,18 @@ def _ensure_pipeline():
 # ---------------------------------------------------------------- tools
 def tool_shanghan_ask(question: str, role: str = "doctor") -> dict:
     _, rag = _ensure_pipeline()
-    return rag.ask(question, role=role)
+    return rag.ask(question, role=_cap_role(role))
 
 
 def tool_shanghan_match(symptoms: list[str], pulses: list[str] | None = None) -> dict:
+    # 方证匹配是医生端能力: 角色上限低于 doctor 的进程直接拒绝,
+    # 患者侧客户端不得获得方剂推荐(经 patient_safety 治理语义一致)
+    if _cap_role("doctor") != "doctor":
+        return {
+            "error": "role_ceiling",
+            "notice": "本部署的角色上限低于 doctor,方证匹配不可用;"
+                      "请改用 shanghan_ask(自动按患者角色脱敏)。",
+        }
     result, _ = _ensure_pipeline()
     from shanghan.matcher import FormulaMatcher
 

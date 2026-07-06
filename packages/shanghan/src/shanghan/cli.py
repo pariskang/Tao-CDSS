@@ -11,8 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 
-from shanghan.pipeline import ShanghanPipeline
-from shanghan.skill_rag import SkillRAG
+from shanghan.runtime import default_rag, default_result
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -26,11 +25,12 @@ def main(argv: list[str] | None = None) -> int:
                      choices=["doctor", "researcher", "patient"])
     args = parser.parse_args(argv)
 
-    result = ShanghanPipeline().run()
+    # 走 runtime 共享缓存: 同进程多命令/被 import 复用时不重复跑全量管线
+    result = default_result()
     if args.cmd == "stats":
         print(json.dumps(result.stats, ensure_ascii=False, indent=2))
         return 0
-    rag = SkillRAG(result)
+    rag = default_rag()
     if args.cmd == "paper":
         print(json.dumps(rag.ask("生成论文草稿", role="researcher"),
                          ensure_ascii=False, indent=2))

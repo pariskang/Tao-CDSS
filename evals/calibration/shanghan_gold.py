@@ -109,12 +109,51 @@ def evaluate(result=None, gold: dict[str, str] | None = None) -> dict:
         round(precision, 4) if precision is not None else None
     )
     report["f1_strict"] = round(f1, 4) if f1 is not None else None
+    # 不确定性量化: 小样本点估计必须带区间(百分位 bootstrap,固定种子确定性)
+    report["precision_ci95"] = _bootstrap_ci_precision(result, gold)
+    # conformal 弃权机制的留一覆盖自检(经验覆盖率应 ≈ 目标 1-α)
+    from shanghan.conformal import loo_coverage
+
+    report["conformal_loo"] = loo_coverage(result.patterns)
     report["rejected_correct"] = rejected_correct
     report["disclaimer"] = (
         "当前标注为 engineer_seed(PENDING_PHYSICIAN_REVIEW),"
         "本报告不构成外部验证准确率;医师重标后方可用于阈值校准。"
     )
     return report
+
+
+def _bootstrap_ci_precision(
+    result, gold: dict[str, str], n_boot: int = 2000, seed: int = 20260703
+) -> dict | None:
+    """precision_strict 的 95% 百分位 bootstrap 置信区间。
+
+    对已放行且有标注的规则做有放回重采样;固定种子保证可复现。
+    n<5 时不给区间(bootstrap 在极小样本下无意义),如实返回 None。
+    """
+    import random
+
+    labels = [
+        gold[rule_key(ar.rule)]
+        for ar in result.approved
+        if ar.release_level != "rejected" and rule_key(ar.rule) in gold
+    ]
+    n = len(labels)
+    if n < 5:
+        return None
+    rng = random.Random(seed)
+    stats = []
+    for _ in range(n_boot):
+        sample = [labels[rng.randrange(n)] for _ in range(n)]
+        stats.append(sum(1 for x in sample if x == "correct") / n)
+    stats.sort()
+    return {
+        "lower": round(stats[int(0.025 * n_boot)], 4),
+        "upper": round(stats[int(0.975 * n_boot) - 1], 4),
+        "n_labeled": n,
+        "n_boot": n_boot,
+        "method": "percentile_bootstrap(seed固定)",
+    }
 
 
 def main() -> None:  # pragma: no cover

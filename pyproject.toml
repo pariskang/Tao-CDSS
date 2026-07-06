@@ -17,6 +17,13 @@ dev = [
     "pytest-asyncio>=0.23",
     "pytest-cov>=5",
 ]
+# Colab/本地演示端(语音问诊 UI): 仅 apps/colab_demo 使用,核心包禁止依赖
+demo = [
+    "gradio>=4.44",
+    "faster-whisper>=1.0",
+    "edge-tts>=6.1",
+    "pyngrok>=7.0",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

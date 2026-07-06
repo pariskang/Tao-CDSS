@@ -4,7 +4,10 @@
 
 > 定位:不做"AI医生",做"医疗智能体操作系统"——患者侧智能预问诊 +
 > 医生侧 CDSS 辅助 + 全链路可审计的 Skill/MCP 原生协议栈。
-> 完整协议见 [docs/protocol-v2.md](docs/protocol-v2.md)。
+> 完整协议见 [docs/protocol-v2.md](docs/protocol-v2.md);
+> 算法与安全机制的文献依据见 [docs/research-roadmap.md](docs/research-roadmap.md)
+> (AMIE/Nature 2025、MAI-DxO、semantic entropy/Nature 2024、
+> split-conformal、spotlighting 等)。
 
 ## 当前实现范围(Sprint 0-3 垂直切片)
 
@@ -14,20 +17,31 @@
 | 红旗引擎(L8.2) | `packages/redflag-engine` | ✅ 纯规则、零 LLM、五级升级 |
 | 审计哈希链(L8/L11) | `packages/audit-chain` | ✅ append-only + 篡改检测 |
 | 事件溯源 | `packages/eventstore` | ✅ 断线恢复/全量回放 |
-| HermesGuard(L8) | `services/hermes-guard` | ✅ 剂量出站/分级/心理旁路/注入/NLI/溯源 |
-| HermesLoop(L3) | `services/hermes-loop` | ✅ SCOPE 状态机 + 价值驱动选问 + 三级降级 |
-| HermesBroker(L5) | `services/hermes-broker` | ✅ 十段治理管线(顺序由测试锁定) |
-| HermesVoice/M-VSL(L1) | `services/hermes-voice` | ✅ Stub ASR + hedge/混淆/回读/方言消歧(真 ASR 留接口) |
-| HermesCompose | `services/hermes-compose` | ✅ 患者/医生双通道,出站最后一级挂安全扫描 |
-| MCP servers | `mcp_servers/` | ✅ calculator/terminology/triage/drug_safety |
-| Skills(L4) | `skills/` | ✅ emergency_triage + oncology_bone_metastasis 七件套 |
-| 评测(L9) | `evals/` | ✅ SP 回放 + 红队回归 |
+| HermesGuard(L8) | `services/hermes-guard` | ✅ 剂量出站/分级/心理旁路/注入/溯源;证据校验为 bigram 启发式(二期换专用 NLI 小模型) |
+| HermesLoop(L3) | `services/hermes-loop` | ✅ SCOPE 状态机 + 价值驱动选问(lr_table 可选) + 三级降级(L2 自动可达) + E0/E1 通知闭环 + 澄清/药名/数字确认闭环 |
+| HermesBroker(L5) | `services/hermes-broker` | ✅ 十段治理管线(顺序由测试锁定);白名单默认拒绝,tools.allow 自动装配 |
+| HermesVoice/M-VSL(L1) | `services/hermes-voice` | ✅ Stub ASR + hedge/混淆双确认/数字回读/方言消歧,全部接线(真 ASR 留接口) |
+| HermesCompose | `services/hermes-compose` | ✅ 患者/医生双通道,出站最后一级挂安全扫描;剂量回填闭环(drug_safety→filled_spans) |
+| MCP servers | `mcp_servers/` | ✅ calculator/terminology/triage/drug_safety;角色上限 HERMES_MCP_ROLE_CEILING |
+| Skills(L4) | `skills/` | ✅ emergency_triage + oncology_bone_metastasis 七件套;metrics.yaml 为评测强制门禁 |
+| 评测(L9) | `evals/` | ✅ SP 回放(metrics 门禁) + 红队回归(含 LLM 通道对抗) + 确定性 self-play 仿真(AMIE 范式,免 LLM auto-rater) + 校准报告(bootstrap CI/conformal LOO 覆盖) |
 | LLM 后端 | `packages/llm-backend` | ✅ litellm 多模型 + LLMGateway 治理(剂量出站/审计/成本/重试修复) |
 | HermesAgents(L6) | `services/hermes-agents` | ✅ Manager + bounded specialists + 复杂度路由 + 多评审共识;LLM 失败确定性兜底 |
-| Shanghan-Hermes | `packages/shanghan` | ✅ 条文分支解析 → branch 级证据 → 对抗审核 → ReleaseGate 硬拒绝 → 方证/六经/鉴别归纳 → SkillRAG 全 handler → 患者递归脱敏 |
+| Shanghan-Hermes | `packages/shanghan` | ✅ 条文分支解析 → branch 级证据 → 对抗审核(可选 LLM 多评审,HERMES_LLM_MODEL 配置后自动接线) → ReleaseGate 硬拒绝 → 方证/六经/鉴别归纳 → SkillRAG 全 handler → 患者递归脱敏 |
 | 编码智能体接入 | `.mcp.json` / `AGENTS.md` / `integrations/` | ✅ Claude Code / Codex / OpenClaw(MCP stdio server + CLI) |
 
 ## 快速开始
+
+### ☁️ Colab 一键演示(语音问诊全功能 UI)
+
+打开 [`notebooks/hermes_colab_demo.ipynb`](notebooks/hermes_colab_demo.ipynb)
+(建议 A100 / RTX A6000 运行时)顺序执行即可:
+Gradio 前端集成 🎤 语音多轮预问诊(faster-whisper large-v3 GPU 转写 +
+edge-tts 语音回复)、👨‍⚕️ 医生工作台(SOAP/裁决/剂量回填/摘要放行)、
+📜 伤寒论问答、🛡️ 评测面板;自动生成 ngrok 公网链接供手机/外网测试。
+本地运行: `pip install -e ".[demo,llm,dev]" && python -m apps.colab_demo.app`。
+
+### 💻 本地开发
 
 ```bash
 uv venv .venv && uv pip install --python .venv/bin/python \
@@ -43,9 +57,13 @@ just shanghan-ask "桂枝汤和麻黄汤怎么鉴别"
 LLM 后端(可选,缺省走确定性 fallback):
 
 ```bash
-export HERMES_LLM_MODEL="anthropic/claude-sonnet-4-6"   # 任意 litellm 模型
+export HERMES_LLM_MODEL="anthropic/claude-sonnet-5"     # 任意 litellm 模型
 export HERMES_LLM_API_BASE="http://院内私有化端点/v1"     # 可选
 ```
+
+> 模型选型建议: 抽取/摘要类角色用 Sonnet 档即可;评审/仲裁类角色建议
+> Opus 档(`anthropic/claude-opus-4-8`)。新一代模型已移除采样参数,
+> 后端经 litellm `drop_params` 自动兼容,无需改代码。
 
 ## 安全红线(详见 CLAUDE.md 硬规则 1-6)
 

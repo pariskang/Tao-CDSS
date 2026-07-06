@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Callable
 
@@ -38,16 +39,28 @@ class ReviewPanel:
             reviewers[f"llm:{role}"] = llm_reviewer
         return cls(reviewers)
 
+    @staticmethod
+    def _vote(reviewer: Callable[[dict], dict], data: dict) -> tuple[str, dict]:
+        try:
+            out = reviewer(data)
+            return out.get("verdict", "warn"), out
+        except Exception as e:
+            # 评委故障降级为 warn,不阻断也不放水
+            return "warn", {"problems": [f"reviewer_error:{type(e).__name__}"]}
+
     def review(self, data: dict) -> PanelVerdict:
         votes: dict[str, str] = {}
         problems: list[str] = []
-        for name, reviewer in self._reviewers.items():
-            try:
-                out = reviewer(data)
-                verdict = out.get("verdict", "warn")
-            except Exception as e:
-                verdict = "warn"  # 评委故障降级为 warn,不阻断也不放水
-                out = {"problems": [f"reviewer_error:{type(e).__name__}"]}
+        names = list(self._reviewers)
+        # 评审彼此独立(无相互上下文),并行执行;结果按注册顺序合并保持确定性
+        if len(names) > 1:
+            with ThreadPoolExecutor(max_workers=min(4, len(names))) as pool:
+                results = list(
+                    pool.map(lambda n: self._vote(self._reviewers[n], data), names)
+                )
+        else:
+            results = [self._vote(self._reviewers[n], data) for n in names]
+        for name, (verdict, out) in zip(names, results):
             votes[name] = verdict
             problems.extend(out.get("problems", []))
         if any(v == "fail" for v in votes.values()):

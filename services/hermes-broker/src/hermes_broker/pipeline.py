@@ -29,7 +29,10 @@ PIPELINE = (
     "audit",
 )
 
-_WRITE_TOOL = re.compile(r"\.(write|create|update|delete|log)_|\.(write|log)$")
+_WRITE_TOOL = re.compile(
+    r"\.(write|create|update|delete|log|store|export)_"
+    r"|\.(write|log|store|export)$"
+)
 
 #: 工具 → 所需同意项(协议 L11 三项分离同意)
 CONSENT_REQUIRED = {
@@ -69,6 +72,10 @@ class Broker:
         self._idem_cache: dict[str, dict] = {}
         self._counts: dict[str, int] = defaultdict(int)
 
+    def register_skill(self, skill) -> None:
+        """从 skill 包的 tools.allow 装配白名单(最小权限自动接线)。"""
+        self._allowlists[skill.name] = set(skill.tools_allow)
+
     def call(
         self,
         env: ToolCallEnvelope,
@@ -102,7 +109,9 @@ class Broker:
                 result = self._execute(env)
                 trace.append("execute")
                 if env.idempotency_key:
-                    self._idem_cache[env.idempotency_key] = result
+                    # 幂等键按 (tool, key) 隔离: 同一 key 跨工具复用时
+                    # 不得串到另一个工具的缓存结果
+                    self._idem_cache[(env.tool, env.idempotency_key)] = result
             result = self._egress(env, result)
             trace.append("egress")
             outcome["result_keys"] = sorted(result) if isinstance(result, dict) else []
@@ -138,8 +147,14 @@ class Broker:
             raise BrokerError(403, f"缺少患者同意项: {required}")
 
     def _allowlist(self, env: ToolCallEnvelope) -> None:
+        # 最小权限: 未注册白名单的 skill 默认拒绝(而非默认放行)。
+        # skill 上线必须显式声明 tools.allow 并经 register_skill 装配。
         allowed = self._allowlists.get(env.skill)
-        if allowed is not None and env.tool not in allowed:
+        if allowed is None:
+            raise BrokerError(
+                403, f"skill {env.skill} 未注册工具白名单(默认拒绝)"
+            )
+        if env.tool not in allowed:
             raise BrokerError(403, f"工具 {env.tool} 不在 skill {env.skill} 白名单")
 
     def _schema(self, env: ToolCallEnvelope) -> None:
@@ -161,10 +176,10 @@ class Broker:
             raise BrokerError(429, "超出 encounter 调用预算")
 
     def _idempotency(self, env: ToolCallEnvelope) -> dict | None:
-        if _WRITE_TOOL.search(env.tool):
+        if _WRITE_TOOL.search(env.tool) or env.tool in CONSENT_REQUIRED:
             if not env.idempotency_key:
                 raise BrokerError(422, "写操作必须携带 idempotency_key")
-            return self._idem_cache.get(env.idempotency_key)
+            return self._idem_cache.get((env.tool, env.idempotency_key))
         return None
 
     def _execute(self, env: ToolCallEnvelope) -> dict:

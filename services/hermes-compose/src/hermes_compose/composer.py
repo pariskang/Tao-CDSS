@@ -39,8 +39,11 @@ def compose_patient_summary(
         if decision.allowed:
             kept.append(sent)
         else:
+            # 被拦截句同样过剂量出站扫描后再入 payload: 患者通道的任何
+            # 字段都可能被前端直接下发,原文(含剂量)不得出现(硬规则1)
             blocked.append(
-                {"text": sent, "output_class": decision.output_class,
+                {"text": scan_outbound(sent).text,
+                 "output_class": decision.output_class,
                  "reasons": decision.reasons}
             )
     text = "".join(kept)
@@ -49,7 +52,8 @@ def compose_patient_summary(
         "channel": "patient",
         "text": egress.text,
         "blocked_sentences": blocked,
-        "dose_violations": [v.text for v in egress.violations],
+        # 患者通道只暴露违规计数,不回显剂量原文
+        "dose_violation_count": len(egress.violations),
     }
 
 
@@ -58,8 +62,15 @@ def compose_doctor_output(
     claims=(),
     evidence_texts: dict[str, str] | None = None,
     dose_fill_spans: tuple[tuple[int, int], ...] = (),
+    dose_advisory_drugs: tuple[str, ...] = (),
 ) -> dict:
-    """医生端: SOAP+鉴别+证据表+缺口+不确定性;全部需医生采纳/修改/拒绝并留痕。"""
+    """医生端: SOAP+鉴别+证据表+缺口+不确定性;全部需医生采纳/修改/拒绝并留痕。
+
+    dose_advisory_drugs: 需要剂量建议的药物 ID,剂量文本一律由
+    drug_safety 结构化数据回填(dose_fill),LLM 剂量仍被出站置换。
+    """
+    from hermes_compose.dose_fill import render_dose_advisories
+
     triaged = triage_claims(list(claims), evidence_texts or {})
     unexcluded = [i.condition for i in state.differential.blocking_items()]
 
@@ -114,6 +125,7 @@ def compose_doctor_output(
         "claims": [render_claim(c) for c in triaged["presented"]],
         "speculation": [render_claim(c) for c in triaged["folded"]],  # 折叠区: 模型推测,无指南依据
         "blocked_claims": [c.claim_id for c in triaged["blocked"]],
+        "dose_advisories": render_dose_advisories(list(dose_advisory_drugs)),
         "gaps": {
             "asked_unanswered": [
                 s for s in state.asked_slots if s not in state.answered_slots

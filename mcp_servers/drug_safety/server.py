@@ -16,16 +16,24 @@ _INTERACTIONS = {
 }
 
 
+def _norm_drug(name: str) -> str:
+    """大小写/空白归一。过敏比对宁可多报: 精确字符串相等会漏掉
+    Ibuprofen vs ibuprofen 这类同药异写。商品名↔通用名映射 PENDING 药学部词表。"""
+    return name.strip().casefold()
+
+
 def check_allergy(drug_id: str, allergies: list[str]) -> dict:
-    hit = drug_id in allergies
-    return {"drug_id": drug_id, "allergy_conflict": hit,
-            "matched": [a for a in allergies if a == drug_id]}
+    key = _norm_drug(drug_id)
+    matched = [a for a in allergies if _norm_drug(a) == key]
+    return {"drug_id": drug_id, "allergy_conflict": bool(matched),
+            "matched": matched}
 
 
 def check_interaction(drug_ids: list[str]) -> dict:
     findings = []
+    normalized = {_norm_drug(d) for d in drug_ids}
     for pair, risk in _INTERACTIONS.items():
-        if pair <= set(drug_ids):
+        if pair <= normalized:
             findings.append({"drugs": sorted(pair), "risk": risk})
     return {"interactions": findings}
 
