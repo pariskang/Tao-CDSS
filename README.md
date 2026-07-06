@@ -1,5 +1,7 @@
 # Hermes-CDSS v2.0
 
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/pariskang/Tao-CDSS/blob/claude/project-review-optimization-2m39gj/notebooks/hermes_colab_demo.ipynb)
+
 方言友好 · 语音优先 · 状态感知 · 可审计的临床智能体协议与系统。
 
 > 定位:不做"AI医生",做"医疗智能体操作系统"——患者侧智能预问诊 +
@@ -34,8 +36,13 @@
 
 ### ☁️ Colab 一键演示(语音问诊全功能 UI)
 
-打开 [`notebooks/hermes_colab_demo.ipynb`](notebooks/hermes_colab_demo.ipynb)
-(建议 A100 / RTX A6000 运行时)顺序执行即可:
+**点击直达**:
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/pariskang/Tao-CDSS/blob/claude/project-review-optimization-2m39gj/notebooks/hermes_colab_demo.ipynb)
+← 一键在 Colab 打开(建议 A100 / RTX A6000 运行时);
+PR 合并后请用 main 分支链接:
+`https://colab.research.google.com/github/pariskang/Tao-CDSS/blob/main/notebooks/hermes_colab_demo.ipynb`
+
+打开后顺序执行即可:
 Gradio 前端集成 🎤 语音多轮预问诊(faster-whisper large-v3 GPU 转写 +
 edge-tts 语音回复)、👨‍⚕️ 医生工作台(SOAP/裁决/剂量回填/摘要放行)、
 📜 伤寒论问答、🛡️ 评测面板;自动生成 ngrok 公网链接供手机/外网测试。
