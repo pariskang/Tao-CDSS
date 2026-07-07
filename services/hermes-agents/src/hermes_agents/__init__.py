@@ -8,6 +8,7 @@
 """
 from hermes_agents.base import AgentResult, BaseAgent
 from hermes_agents.manager import ManagerAgent, classify_complexity
+from hermes_agents.orchestrator import build_task, run_doctor_consult
 from hermes_agents.review_panel import PanelVerdict, ReviewPanel
 from hermes_agents.specialists import (
     IntakeAgent,
@@ -19,10 +20,12 @@ from hermes_agents.specialists import (
 __all__ = [
     "AgentResult",
     "BaseAgent",
+    "build_task",
     "IntakeAgent",
     "ManagerAgent",
     "MedicationSafetyAgent",
     "PanelVerdict",
+    "run_doctor_consult",
     "ReviewPanel",
     "SafetyTriageAgent",
     "TCMReasoningAgent",

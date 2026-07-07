@@ -179,3 +179,61 @@ class TestReviewPanel:
         verdict = panel.review({"rule": "x"})
         assert verdict.verdict == "fail"
         assert "llm质疑" in verdict.problems
+
+
+class TestDoctorConsultOrchestration:
+    """ManagerAgent 接入医生端主链路(外部审计 P0): 采集完成→会诊→审计。"""
+
+    def _engine(self, skill="emergency_triage", utterances=()):
+        from eventstore import EventStore
+        from hermes_contracts import ConsentFlags
+        from hermes_loop.engine import LoopEngine
+        from hermes_loop.skill_loader import load_skill
+
+        eng = LoopEngine("orch_enc", skill=load_skill(skill),
+                         store=EventStore())
+        eng.begin(ConsentFlags(recording=True, retention=True))
+        for u in utterances:
+            eng.step(u)
+        return eng
+
+    def test_consult_merges_specialists_and_audits(self):
+        from hermes_agents.orchestrator import run_doctor_consult
+
+        eng = self._engine(utterances=["咳嗽两天", "前天", "三分",
+                                       "没有过敏", "没有", "没有"])
+        consult = run_doctor_consult(eng)
+        assert consult["channel"] == "doctor"
+        assert "safety_triage" in consult["sections"]
+        assert "intake" in consult["sections"]
+        assert consult["complexity"] in ("simple", "moderate", "complex")
+        actions = [e["action"] for e in eng.ledger.entries("orch_enc")]
+        assert "agent_consult" in actions
+
+    def test_oncology_skill_routes_specialty(self):
+        from hermes_agents.orchestrator import build_task
+
+        eng = self._engine(skill="oncology_bone_metastasis",
+                           utterances=["腰背痛两周了"])
+        task = build_task(eng.state, eng.texts,
+                          skill_name="oncology_bone_metastasis")
+        assert task["specialty"] == "oncology"
+        assert task["chief_complaints"] == ["腰背痛两周了"]
+        assert "spinal_cord_compression" in task["unexcluded"]
+
+    def test_escalation_crosscheck_matches_engine(self):
+        from hermes_agents.orchestrator import run_doctor_consult
+
+        eng = self._engine(utterances=["突然剧烈头痛,炸开一样"])
+        consult = run_doctor_consult(eng)
+        assert consult["escalation_crosscheck"] == "E1"
+        assert consult["complexity"] == "complex"
+
+    def test_deterministic_without_llm(self):
+        from hermes_agents.orchestrator import run_doctor_consult
+
+        eng1 = self._engine(utterances=["咳嗽两天"])
+        eng2 = self._engine(utterances=["咳嗽两天"])
+        c1, c2 = run_doctor_consult(eng1), run_doctor_consult(eng2)
+        assert c1["sections"].keys() == c2["sections"].keys()
+        assert not any(c1["used_llm"].values())

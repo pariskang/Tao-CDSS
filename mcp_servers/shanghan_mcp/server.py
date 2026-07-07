@@ -120,6 +120,50 @@ TOOLS = {
 }
 
 
+# ---------------------------------------------------------------- broker
+_BROKER = None
+_SKILL_NAME = "shanghan_mcp"
+
+
+def _broker():
+    """stdio 进程内的 Broker 单例: 本 server 是薄适配层,所有工具调用
+    构造 ToolCallEnvelope 走完整治理管线(auth 由本地进程边界承担,
+    ctx.authenticated=True;其余九段全部生效)。"""
+    global _BROKER
+    if _BROKER is None:
+        from audit_chain import AuditLedger
+        from hermes_broker.pipeline import Broker
+
+        registry = {
+            f"{_SKILL_NAME}.{name}": t["fn"] for name, t in TOOLS.items()
+        }
+        _BROKER = Broker(
+            registry,
+            ledger=AuditLedger(),
+            allowlists={_SKILL_NAME: set(registry)},
+            rate_limit=500,
+        )
+    return _BROKER
+
+
+def _governed_call(name: str, arguments: dict) -> dict:
+    import uuid
+
+    from hermes_contracts import ConsentFlags, ToolCallEnvelope
+
+    env = ToolCallEnvelope(
+        tool_call_id=f"mcp_{uuid.uuid4().hex[:10]}",
+        encounter_id="mcp_stdio_session",
+        agent="mcp_client",
+        skill=_SKILL_NAME,
+        tool=f"{_SKILL_NAME}.{name}",
+        input=dict(arguments or {}),
+    )
+    return _broker().call(
+        env, ConsentFlags(), context={"authenticated": True}
+    )
+
+
 # ---------------------------------------------------------------- JSON-RPC
 def handle(request: dict) -> dict | None:
     method = request.get("method", "")
@@ -146,7 +190,9 @@ def handle(request: dict) -> dict | None:
         if name not in TOOLS:
             return _err(req_id, -32602, f"unknown tool: {name}")
         try:
-            result = TOOLS[name]["fn"](**params.get("arguments", {}))
+            # 全部工具调用经 HermesBroker 十段治理管线(外部审计 P1):
+            # 注入扫描/限流/出站脱敏+剂量扫描/审计入链,不再直调函数
+            result = _governed_call(name, params.get("arguments", {}))
             return _ok(req_id, {
                 "content": [{"type": "text",
                              "text": json.dumps(result, ensure_ascii=False)}],

@@ -10,10 +10,24 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 
+from dataclasses import dataclass
+from typing import Callable
+
+from pydantic import BaseModel, ValidationError
+
 from audit_chain import AuditLedger
 from hermes_contracts import ConsentFlags, ToolCallEnvelope
 from hermes_guard.dose_egress import scan_outbound
 from hermes_guard.injection_scanner import scan_payload
+
+
+@dataclass(frozen=True)
+class ToolSpec:
+    """带输入 schema 的工具注册项: 参数错误在执行前变成 422,
+    而不是进入工具内部炸成 500(医疗工具调用的前置校验)。"""
+
+    fn: Callable
+    input_model: type[BaseModel] | None = None
 
 #: 顺序即协议,由 tests/unit/test_broker.py 锁定
 PIPELINE = (
@@ -44,8 +58,23 @@ CONSENT_REQUIRED = {
 #: 唯一合法剂量来源(硬规则1),其结构化输出不做剂量出站扫描
 DOSE_SOURCE_TOOLS = ("drug_safety.get_dose_range",)
 
+#: PHI 最小化模式表(外部审计 P1 扩展)。姓名等自由文本 PHI 需 NER,
+#: 留待 HermesMemory/生产脱敏服务;此处覆盖可正则化的标识符类。
 _PHONE = re.compile(r"1[3-9]\d{9}")
-_ID_CARD = re.compile(r"\d{17}[\dXx]")
+_ID_CARD = re.compile(r"\d{17}[\dXx]|\d{15}(?!\d)")  # 18位 + 15位旧证
+_BIRTHDATE = re.compile(
+    r"(?:19|20)\d{2}\s*[年./-]\s*\d{1,2}\s*[月./-]\s*\d{1,2}\s*日?"
+)
+_MED_RECORD = re.compile(
+    r"(?:住院号|门诊号|病案号|病历号|就诊卡号?|检查单号|影像号|申请单号)"
+    r"[:: ]?\s*[A-Za-z0-9-]{4,20}"
+)
+_PHI_PATTERNS: tuple[tuple[re.Pattern, str], ...] = (
+    (_PHONE, "[手机号已脱敏]"),
+    (_ID_CARD, "[证件号已脱敏]"),
+    (_BIRTHDATE, "[出生日期已脱敏]"),
+    (_MED_RECORD, "[就诊标识已脱敏]"),
+)
 
 
 class BrokerError(Exception):
@@ -94,7 +123,7 @@ class Broker:
             trace.append("consent")
             self._allowlist(env)
             trace.append("allowlist")
-            self._schema(env)
+            env = self._schema(env)  # 校验通过则替换为规范化入参
             trace.append("schema")
             env, injection_hits = self._injection_scan(env)
             trace.append("injection_scan")
@@ -157,11 +186,23 @@ class Broker:
         if env.tool not in allowed:
             raise BrokerError(403, f"工具 {env.tool} 不在 skill {env.skill} 白名单")
 
-    def _schema(self, env: ToolCallEnvelope) -> None:
+    def _schema(self, env: ToolCallEnvelope) -> ToolCallEnvelope:
         if env.tool not in self._registry:
             raise BrokerError(404, f"未注册工具: {env.tool}")
         if not isinstance(env.input, dict):
             raise BrokerError(422, "input 必须为对象")  # pragma: no cover
+        spec = self._registry[env.tool]
+        if isinstance(spec, ToolSpec) and spec.input_model is not None:
+            try:
+                validated = spec.input_model.model_validate(env.input)
+            except ValidationError as e:
+                detail = "; ".join(
+                    f"{'.'.join(str(p) for p in err['loc'])}: {err['msg']}"
+                    for err in e.errors()[:5]
+                )
+                raise BrokerError(422, f"入参 schema 校验失败: {detail}") from e
+            return env.model_copy(update={"input": validated.model_dump()})
+        return env
 
     @staticmethod
     def _injection_scan(env: ToolCallEnvelope):
@@ -183,8 +224,10 @@ class Broker:
         return None
 
     def _execute(self, env: ToolCallEnvelope) -> dict:
+        spec = self._registry[env.tool]
+        fn = spec.fn if isinstance(spec, ToolSpec) else spec
         try:
-            return self._registry[env.tool](**env.input)
+            return fn(**env.input)
         except BrokerError:
             raise  # pragma: no cover
         except Exception as e:
@@ -195,8 +238,8 @@ class Broker:
 
         def walk(node):
             if isinstance(node, str):
-                node = _PHONE.sub("[手机号已脱敏]", node)
-                node = _ID_CARD.sub("[证件号已脱敏]", node)
+                for pattern, mark in _PHI_PATTERNS:
+                    node = pattern.sub(mark, node)
                 if not skip_dose:
                     node = scan_outbound(node).text
                 return node

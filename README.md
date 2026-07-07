@@ -2,6 +2,12 @@
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/pariskang/Tao-CDSS/blob/claude/project-review-optimization-2m39gj/notebooks/hermes_colab_demo.ipynb)
 
+> ## 🚫 当前版本不可用于真实临床
+> 全部临床规则、红旗词表、药学数据、升级/心理话术均为**工程占位**
+> (`PENDING_PHYSICIAN_REVIEW` / `engineer_seed`),未经执业医师审定、
+> 伦理审查与监管评估。本仓库仅用于协议栈与安全机制的工程验证,
+> **不构成医疗建议,严禁接入真实患者**。
+
 方言友好 · 语音优先 · 状态感知 · 可审计的临床智能体协议与系统。
 
 > 定位:不做"AI医生",做"医疗智能体操作系统"——患者侧智能预问诊 +

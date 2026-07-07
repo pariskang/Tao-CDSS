@@ -210,6 +210,7 @@ class TestSpotlighting:
 
 class TestLiteLLMBackend:
     def test_importable_and_configurable(self, monkeypatch):
+        pytest.importorskip("litellm")  # 可选依赖组 [llm],未装则跳过
         from hermes_llm.backend import LiteLLMBackend
 
         monkeypatch.setenv("HERMES_LLM_MODEL", "openai/gpt-4o-mini")
@@ -217,6 +218,7 @@ class TestLiteLLMBackend:
         assert backend.model == "openai/gpt-4o-mini"
 
     def test_missing_model_raises(self, monkeypatch):
+        pytest.importorskip("litellm")
         from hermes_llm.backend import BackendUnavailable, LiteLLMBackend
 
         monkeypatch.delenv("HERMES_LLM_MODEL", raising=False)

@@ -10,7 +10,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
-      - run: uv venv .venv && uv pip install --python .venv/bin/python pydantic pyyaml pytest pytest-asyncio pytest-cov
+      - run: uv venv .venv && uv pip install --python .venv/bin/python pydantic pyyaml litellm pytest pytest-asyncio pytest-cov
       - run: |
           .venv/bin/python -m pytest tests/safety -q \
             --cov=hermes_guard --cov=redflag_engine --cov=audit_chain \
@@ -22,7 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
-      - run: uv venv .venv && uv pip install --python .venv/bin/python pydantic pyyaml pytest pytest-asyncio pytest-cov
+      - run: uv venv .venv && uv pip install --python .venv/bin/python pydantic pyyaml litellm pytest pytest-asyncio pytest-cov
       - run: .venv/bin/python -m pytest -q
       - name: 契约漂移检测
         run: |
@@ -38,7 +38,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
-      - run: uv venv .venv && uv pip install --python .venv/bin/python pydantic pyyaml pytest pytest-asyncio pytest-cov
+      - run: uv venv .venv && uv pip install --python .venv/bin/python pydantic pyyaml litellm pytest pytest-asyncio pytest-cov
       - run: PYTHONPATH="$PYPATH" .venv/bin/python -m evals.simulation.replay --skill emergency_triage
       - run: PYTHONPATH="$PYPATH" .venv/bin/python -m evals.simulation.replay --skill oncology_bone_metastasis
       - run: PYTHONPATH="$PYPATH" .venv/bin/python -m evals.redteam.run

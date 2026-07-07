@@ -82,6 +82,11 @@ def compose_doctor_output(
             "claim_type": claim.claim_type,
             "output_class": claim.output_class,
             "verifier_nli": claim.verifier_nli,
+            # 保守标注(外部审计 P1): 当前证据校验为 bigram 启发式而非
+            # 真实医学 NLI,entailed 也只是"启发式通过",医生必须自行核对
+            "evidence_note": (
+                "证据绑定为启发式(bigram)校验结果,非医学NLI,须医生核对原文"
+            ),
             "evidence_bindings": claim.evidence_bindings,
             "dose_violations": [v.text for v in egress.violations],
         }

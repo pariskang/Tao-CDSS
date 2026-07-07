@@ -171,6 +171,19 @@ class TestInjectionAndEgress:
         assert "13812345678" not in result["note"]
         assert "110101199001011234" not in result["note"]
 
+    def test_egress_masks_extended_phi(self, broker):
+        """PHI 扩展(外部审计 P1): 15位旧证/出生日期/住院号/影像号。"""
+        broker._registry["echo.run"] = lambda **kw: {
+            "note": "患者110101900101123,生于1990年1月1日,"
+                    "住院号: ZY2024-0117,影像号 IMG88231",
+        }
+        result = broker.call(make_env(tool="echo.run", input={}), CONSENT, AUTH)
+        note = result["note"]
+        assert "110101900101123" not in note
+        assert "1990年1月1日" not in note
+        assert "ZY2024-0117" not in note
+        assert "IMG88231" not in note
+
     def test_egress_redacts_dose_from_normal_tool(self, broker):
         broker._registry["echo.run"] = lambda **kw: {
             "advice": "每次吃200mg", "nested": ["一日三次"], "n": 1,
@@ -185,3 +198,54 @@ class TestInjectionAndEgress:
             make_env(tool="drug_safety.get_dose_range", input={}), CONSENT, AUTH
         )
         assert result["dose_text"] == "200mg q6h"
+
+
+class TestToolSpecSchema:
+    """真实入参 schema 校验(外部审计 P1): 参数错误执行前变 422 而非 500。"""
+
+    def _broker(self):
+        from mcp_servers.tool_specs import governed_registry
+
+        b = Broker(governed_registry(), ledger=AuditLedger(), rate_limit=50)
+        b._allowlists["emergency_triage"] = set(governed_registry())
+        return b
+
+    def test_valid_input_passes_and_normalizes(self):
+        b = self._broker()
+        out = b.call(make_env(tool="calculator.nrs_pain",
+                              input={"score": 7}), CONSENT, AUTH)
+        assert out["score"] == 7
+
+    def test_out_of_range_becomes_422(self):
+        b = self._broker()
+        with pytest.raises(BrokerError) as e:
+            b.call(make_env(tool="calculator.nrs_pain",
+                            input={"score": 99}), CONSENT, AUTH)
+        assert e.value.status == 422
+        assert "schema" in e.value.detail
+
+    def test_wrong_type_becomes_422(self):
+        b = self._broker()
+        with pytest.raises(BrokerError) as e:
+            b.call(make_env(tool="triage.red_flag_check",
+                            input={"texts": "裸字符串"}), CONSENT, AUTH)
+        assert e.value.status == 422
+
+    def test_extra_fields_forbidden(self):
+        b = self._broker()
+        with pytest.raises(BrokerError) as e:
+            b.call(make_env(tool="calculator.nrs_pain",
+                            input={"score": 5, "inject": "x"}), CONSENT, AUTH)
+        assert e.value.status == 422
+
+    def test_missing_required_becomes_422(self):
+        b = self._broker()
+        with pytest.raises(BrokerError) as e:
+            b.call(make_env(tool="drug_safety.get_dose_range",
+                            input={}), CONSENT, AUTH)
+        assert e.value.status == 422
+
+    def test_legacy_callable_registration_still_works(self, broker):
+        """旧 callable 注册向后兼容(渐进迁移)。"""
+        out = broker.call(make_env(), CONSENT, AUTH)
+        assert out["score"] == 7

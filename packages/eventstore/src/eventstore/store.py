@@ -76,3 +76,14 @@ class EventStore:
                 "ORDER BY encounter_id"
             ).fetchall()
         return [r[0] for r in rows]
+
+    # ---------------------------------------------------------- 资源管理
+    def close(self) -> None:
+        with self._lock:
+            self._conn.close()
+
+    def __enter__(self) -> "EventStore":
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self.close()

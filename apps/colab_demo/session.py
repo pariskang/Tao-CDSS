@@ -143,11 +143,23 @@ def patient_turn(
 # ------------------------------------------------------------------ 医生端
 def doctor_view(session: DemoSession,
                 dose_drugs: tuple[str, ...] = ()) -> dict:
+    """医生端视图 = compose_doctor_output + ManagerAgent 受限会诊段。
+
+    会诊经 hermes_agents.orchestrator 走主链路(复杂度路由→specialists
+    →合成→审计),LLM 不可用时确定性 fallback,失败不阻断基础视图。
+    """
     from hermes_compose.composer import compose_doctor_output
 
-    return compose_doctor_output(
+    view = compose_doctor_output(
         session.engine.state, dose_advisory_drugs=tuple(dose_drugs)
     )
+    try:
+        from hermes_agents.orchestrator import run_doctor_consult
+
+        view["agent_consult"] = run_doctor_consult(session.engine)
+    except Exception as e:  # 会诊层故障降级: 基础视图仍完整可用
+        view["agent_consult"] = {"error": f"consult_unavailable:{type(e).__name__}"}
+    return view
 
 
 def doctor_decide(

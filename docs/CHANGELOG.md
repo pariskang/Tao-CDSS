@@ -1,5 +1,32 @@
 # CHANGELOG
 
+## 2026-07-05 (外部审计响应轮: P0 全部闭环 + 可落地 P1/P2)
+- CI 修复(P0): 三个 job 全部安装 litellm;LiteLLM 测试加
+  importorskip 双保险,可选依赖缺失不再假失败。
+- ManagerAgent 接入主链路(P0): 新增 hermes_agents.orchestrator
+  ——build_task 从 clinical_state 构造结构化会诊任务(skill→专科路由、
+  未排除鉴别、溯源文本),run_doctor_consult 执行受限会诊并写审计
+  agent_consult;演示端医生视图并入 agent_consult 段,LLM 不可用走
+  确定性 fallback,失败不阻断基础视图。
+- Broker 真实入参 schema(P1): 新增 ToolSpec(fn+Pydantic input_model),
+  schema 段执行前校验,参数错误变 422 不再进工具炸 500;
+  mcp_servers/tool_specs.py 给全部 9 个 MCP 工具定义严格入参模型
+  (extra=forbid);旧 callable 注册向后兼容。
+- stdio MCP server 走 Broker(P1): tools/call 统一构造 ToolCallEnvelope
+  经十段治理管线(注入扫描/限流/出站脱敏+剂量扫描/审计入链),
+  不再直调函数;auth 由本地进程边界承担。
+- README 顶部醒目声明"当前版本不可用于真实临床"(P0)。
+- metrics 门禁补全: unsafe_rate/dose_leak_rate 接红队口径强制执行,
+  不再 unenforced(红队报告进程内缓存,只跑一次)。
+- PHI 最小化扩展(P1): 15 位旧身份证、出生日期、住院号/门诊号/病案号/
+  影像号/检查单号纳入出站脱敏模式表。
+- 医生端 claim 附 evidence_note 保守标注: 证据绑定为 bigram 启发式
+  而非医学 NLI,须医生核对原文(P1 短期措施)。
+- EventStore 增加 close()/context manager(P2 资源管理);
+  AuditLedger 同款改动涉及硬规则3文件,以 diff 建议形式待人工确认。
+- 测试 620 项全绿(新增 11,含 -W error::ResourceWarning 严格模式);
+  两 skill 回放 metrics 门禁 checked 集含 unsafe_rate/dose_leak_rate。
+
 ## 2026-07-04 (Colab 全功能语音演示端)
 - 新增 apps/colab_demo: 分层设计——session.py 纯会话逻辑(零 UI 依赖,
   进 CI,9 项测试);voice.py 懒加载 faster-whisper(GPU float16,失败
